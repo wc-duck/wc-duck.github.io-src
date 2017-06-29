@@ -3,8 +3,8 @@
 from __future__ import unicode_literals
 
 AUTHOR = 'Fredrik Kihlander'
-#SITEURL = 'http://kihlander.net'
-SITEURL = 'http://localhost:8000'
+SITEURL = 'http://kihlander.net'
+#SITEURL = 'http://localhost:8000'
 SITENAME = 'The blog of Fredrik Kihlander'
 SITETITLE = 'What could possibly go wrong?'
 SITESUBTITLE = 'The blog of Fredrik Kihlander'
@@ -37,6 +37,8 @@ SOCIAL = (('github', 'https://github.com/wc-duck'),
           ('twitter', 'https://twitter.com/wc_duck'),
           ('rss', '/feeds/all.atom.xml')
 	)
+
+STATIC_PATHS = ['images']
 
 # Uncomment following line if you want document-relative URLs when developing
 RELATIVE_URLS = False
