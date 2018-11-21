@@ -2,7 +2,7 @@ Title: "ProtoThreads" with a twist.
 Date: 2018-11-20
 Tags: code, c++, coroutines
 
-For a long time I'v been interested in trying out to run game-specific/entity-specific code in coroutines. 
+For a long time I'v been interested in trying to run game-specific/entity-specific code in coroutines. 
 Something like the following.
 
 ```c++
@@ -32,40 +32,45 @@ void some_game_object_behaviors( entity ent, ... )
 }
 ```
 
-The above example is slightly simplified but I hope that it get the point across. I think that way of writing 
-one-off gamecode might be a nice thing, especially when adding wait_for_any() and wait_for_all() etc.
+The above example is slightly simplified but I hope that it get the point across, that we want to be able
+to suspend code-execution at specific points and wait for certein actions to complete. Writing  one-off 
+game-code in this fashion might be a good way to work, especially when adding wait_for_any() and  wait_for_all()
+etc.
 
 So when I finally decided to take a stab at trying that out I started out by looking at how to implement the
-actual coroutines. There are some libraries out there that you can use to implement coroutines in c++ such as:
+actual coroutines. There are a couple of libraries out there that I looked at for coroutines in c/c++ such as:
 
-- [libaco(https://github.com/hnes/libaco)]
-- [libdill(http://libdill.org/)]
-- [libmill(http://libmill.org/)]
+- [libaco](https://github.com/hnes/libaco)
+- [libdill](http://libdill.org/)
+- [libmill](http://libmill.org/)
 
-Both libdill and libmill feel a bit to 'opinionated' on how to structure my code for my application so libaco
-sparked my interest. I think it looks really nice but there is a big BUTT, no windows support yet =/ I do
-most of my development on Linux but throwing Windows support out of the "window" *badumtish* is not something
-I want to do.
-According to the issue-tracker it is in "the pipe" but it is not supported now.
+Both libdill and libmill feel a bit to 'opinionated' on how to they want you to structure you code ( not that
+weird since the both sets out to re-implement go:s goroutines in c ) and also feels a bit 'heavier' than what
+I need.
+So libaco sparked my interest, it looks quite lean and not too opinionated, i.e. it looks really nice! 
+But there is a big BUT, no windows support yet =/ I do most of my development on Linux but throwing Windows 
+support out of the "window" (**badumtish**) is not something I want to do.
+According to the issue-tracker it is in "the pipe" but it is not supported as of writing this.
 
-This lead me to fire of a question on twitter about alternatives where @RandyPGaul pointed out something that I
-had looked at before but totally forgotten about, coroutines/protothreads based on "duffs-device".
+This lead me to fire of a question on twitter about alternatives and where [@RandyPGaul](https://twitter.com/randypgaul)
+pointed out something that I had looked at before but totally forgotten about, coroutines/protothreads based 
+on "duffs-device".
 
-Since there are already good descriptions of this on the webs-of-the-inter I'll just link to the original 
+Since there are already good descriptions on this technique on the interwebs I'll just link to the original 
 article here and wait until you have read it ( if you haven't already ).
 
-[coroutines in c(https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html)]
+[coroutines in c](https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html)
 
 Read it yet? Good!
 
 Here are a few other links to libs that implement these kind of coroutines for you if your interested.
 
-- [protothreads(http://dunkels.com/adam/pt/)]
-- [zserge/pt(https://github.com/zserge/pt)]
-- [Randy Gauls version(https://github.com/RandyGaul/cute_headers/blob/master/cute_coroutine.h)]
+- [protothreads](http://dunkels.com/adam/pt/)
+- [zserge/pt](https://github.com/zserge/pt)
+- [cute_coroutine](https://github.com/RandyGaul/cute_headers/blob/master/cute_coroutine.h)
 
 What I like about this solution is that it is "just code" so it should in theory work on any platform without
-platform-specific code etc. I should also work with emscripten ( that I shall get running any day now!!! ;) ).
+platform-specific code. It should also work with emscripten ( that I shall get running any day now!!! ;) ).
 
 There are however things that I am missing from these otherwise fine libraries.
 A major one is the based on how I plan to use them, I plan to have all my "behaviors" run one coroutine and 
@@ -86,35 +91,65 @@ So what do you do when you have an interesting itch to scratch? You scratch it o
 
 # Solving the issues!
 
-As any decent NIH-addict I decided to try for myself what I could do and came to the conclusion that all
-the above issues can be solved by a small stack to each coroutine, i.e. almost do what the compiler does manually!
+As any decent NIH-addict I decided to try myself and see what I could do and came to the conclusion that all
+the above issues can be solved by adding a small stack to each coroutine, i.e. almost do what the compiler 
+does!
 
-Introducing my boringly named coroutine lib, [coro(https://github.com/wc-duck/coro)].
+Introducing my boringly named coroutine lib, [coro](https://github.com/wc-duck/coro).
 
 As mentioned above the only real difference to the above mentioned libs are that each coroutine in coro MAY have
-a stack associated with it where the system itself can push data and reset when a coroutine exits.  
+a stack associated with it where the system itself can push data and reset when a coroutine completes.  
 
 >
 > Warning for you C-all-the-way people, there be some usage of C++ in this piece of code! But I guess it wouldn't
-> be that hard to C:ify the lib if there is enought requests!
+> be that hard to C:ify the lib if there is demand for it!
 >
 
-SOMETHING ABOUT co_begin()/co_end()/co_yield() and 'struct coro*'
+The library does nothing particularly fancy at its core, the simplest coroutine would be implemented and updated 
+like this.
 
-So how will this solve the above mentioned issues?
+```c++
+void my_coro( coro* co, void*, void* )
+{
+    // all coroutines need a matching co_begin/co_end-pair
+    co_begin(co);
+
+    // ... do stuff ...
+
+    // ... yield execution of coroutine, i.e. introduce a yield-point in the
+    //     function where to continue execution on the next update ...
+    co_yield(co);
+
+    co_end(co);
+}
+
+void run_it()
+{
+    // ... create and initialize our coroutine ...
+    coro co;
+    co_init(&co, nullptr, 0, my_coro);
+
+    // ... resume until completed ...
+    while(!co_completed(&co))
+        co_resume(&co);
+}
+```
+
+But now to the meat of this post, how will adding a stack solve the above mentioned issues?
+
 
 ## General coroutine update
 
-Well, this isn't solved by the stack, this is just solved by introducing a struct for the coroutines :) Now we have
-that out of the way.
+Well, this isn't solved by the stack, this is just solved by introducing a struct for the coroutines and storing a
+function-ptr in it :) Now we have that out of the way, carry on.
 
 
 ## Local variables
 
-Now lets get to the stack-part and lets start with local variables. When we have a memory-area to store data in that
+Lets get to the stack-part and start with local variables. When we have a memory-area to store data in
 the problem isn't really to store the data, it is how to make it nice to use.
 
-As all the above libs the same goes for coro, you can't just make a local variable and expect it to work such as
+As all the above mentioned libs, the same goes for coro, you can't just make a local variable and expect it to work
 
 ```c++
 void some_game_object_behaviors( coro* co, void*, void* )
@@ -152,19 +187,20 @@ But it will print
 >
 > whoo 1
 
-Why? If you read the above mentioned article [coroutines in c(https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html)] ( you 
-did read it right? ) then you see the problem. The coroutines build on calling the function over and over until it exits at the end
-and on each call it will initialize a local variable to 0, jump to the last position in the function, increment and print.
+Why? If you read the article [coroutines in c](https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html) ( you 
+did read it right? ) then you see the problem. The coroutines build on calling the function over and over until it
+exits at the end. On each call it will initialize a local variable to 0, jump to the last position in the 
+function, increment and print.
 
-Thats not good now, is it? "Didn't you mention solving this with the stack" you might think and that is correct. 'coro' has a function
-(actually a macro) called co_declare_locals() that is used like this
+Thats not good now, is it? "Didn't you mention solving this with the stack" you might think and that is correct. 
+'coro' has a pair of functions (actually a macros) called co_locals_begin()/co_locals_end() that is used like this
 
 ```c++
 void some_game_object_behaviors( coro* co, void*, void* )
 {
-    co_declare_locals(co,
+    co_locals_begin(co);
         int my_counter = 0; // could be any amount of variables here!
-    );
+    co_locals_end(co);
 
     co_begin(co);
 
@@ -181,35 +217,31 @@ void some_game_object_behaviors( coro* co, void*, void* )
 }
 ```
 
-This macro will declare a local struct and instanciate a reference to one of these called `locals`, and guess where that reference
-is pointing, into the stack! This variable will only be allocated from the stack when entering the function for the first time, in
-the following calls it will just be fetched from the stack.
+These macros will declare a local struct and instantiate a reference to one of these called `locals`, and guess where
+that reference is pointing, into the stack! This variable will only be allocated from the stack when entering the 
+function for the first time, in the following calls it will just be fetched from the stack.
 
-This means that we will have a struct that will be the same between all calls to our coroutine that is not exposed to the calling
-code so we take the burden of keeping track of this away from the user.
+What this means is that we will have a struct that will be the same between all calls to our coroutine, that is not 
+exposed to the calling code and take the burden of keeping track of this away from the caller.
 
-It might be interesting to have a look at how the macro work as well, if we just expand it and look at what is generated.
+It might be interesting to have a look at how the macro work as well, if we just expand it and look at what is 
+generated.
 
 ```c++
-// declared in coro.h but copied here for clarity
-template< typename T >
-static inline T* _co_declare_locals(coro* co)
-{
-    if(co->call_locals == nullptr)
-    {
-        co->call_locals = _co_stack_alloc(co, sizeof(T), alignof(T));
-        new (co->call_locals) T;
-    }
-    return (T*)co->call_locals;
-}
-
 void some_game_object_behaviors( coro* co, void*, void* )
 {
     struct _co_locals
     {
         int my_counter = 0;
     };
-    _co_locals& locals = *_co_declare_locals<_co_locals>(co);
+    if(co->call_locals == nullptr)
+    {
+        co->call_locals = _co_stack_alloc( co,
+                                           sizeof(_co_locals),
+                                           alignof(_co_locals));
+        new (co->call_locals) _co_locals;
+    }
+    _co_locals& CORO_LOCALS_NAME = *((_co_locals*)co->call_locals);
 
     co_begin(co);
 
@@ -219,13 +251,12 @@ void some_game_object_behaviors( coro* co, void*, void* )
 }
 ```
 
-As you can see it just declare a local struct and copies everyting from the second argument of co_declare_locals() into it. Then
-we have a helper function to allocate this if it is the first call. By just placing the values in a struct we can put all of this
-in one declare call + we get size/alignment for free from the compiler.
+As you can see it just declare a local struct and copies everything from the second argument of co_declare_locals()
+into it. Then we have a helper function to allocate this if it is the first call. By just placing the values in a 
+struct we can put all of this in one declare call + we get size/alignment of the entire block for free from the compiler.
 
-Also, since c++ now supports 'inline' initialization ( I guess there is a fancier name for it ) of member-variables we do not have
-to generate a constructor but we can still set initial values for our locals as we would any other local variable. Later the function
-uses `placement new` to initialize the values.
+Also, since c++ now supports 'inline' initialization ( I guess there is a fancier name for it ) of member-variables we can
+just write out or variables, set initial values and use `placement new` to initialize the values.
 
 >
 > Note to the C++:ers out there, currently no destructor is run on the locals but I guess that could be implemented in co_end()
@@ -235,9 +266,9 @@ uses `placement new` to initialize the values.
 
 ## sub-calls
 
-With local variables out of the way, how about calling another coroutine function from the first one? Well, just to state the obvious
-calling an ordinary function is just doing the call if someone was wondering. However say that you want to call a function that can,
-by itself yield execution, such as this
+With local variables out of the way, how about calling another coroutine function from the first one? Well, just to state the
+obvious calling an ordinary function is just doing the call if someone was wondering. However say that you want to call a 
+function that can, by itself, yield execution?
 
 ```c++
 void some_game_object_sub_behaviors1( coro* co, void*, void* )
@@ -264,22 +295,20 @@ void some_game_object_behaviors( coro* co, void*, void* )
 
     // ... function ...
     if(rand() % 1)
-    {
-        // some_game_object_sub_behaviors1()?
-    }
+        {// some_game_object_sub_behaviors1()?}
     else
-    {
-        // some_game_object_sub_behaviors2()?
-    }
+        {// some_game_object_sub_behaviors2()?}
 
     co_end(co);
 }
 ```
 
-Lucky for us we have the stack and `co_call()`! co_call() will allocate a `coro`-struct on the stack and execute that just as any
-other coroutine. However it has some diffrences. First of all, if it returns on the first call the caller will not yield, it will just
-continue. If it do yield it will be resumed by co_begin() until it completes and then the caller will continue after the co_call()
-that triggered.
+Lucky for us we have the stack and `co_call()`! co_call() will allocate a `coro`-struct on the coroutine-stack and execute 
+that just as any other coroutine. However it has some differences from co_init()+co_resume(). First of all, if it returns 
+on the first call the caller will not yield, it will just continue. If it do yield it will be resumed by co_begin() of the
+caller until it completes and then the caller will continue at the yield-point introduced by co_call().
+The resume of the sub-call could also have been done in the top-level co_resume() call but I decided to do it from the
+caller just to preserve the callstack for debugging.
 When the sub-call completes the stack will be reset to the point where `co_call()` allocated its `coro`-struct.
 
 The above code will then be
@@ -291,13 +320,9 @@ void some_game_object_behaviors( coro* co, void*, void* )
 
     // ... function ...
     if(rand() % 1)
-    {
         co_call(co, some_game_object_sub_behaviors1);
-    }
     else
-    {
         co_call(co, some_game_object_sub_behaviors2);
-    }
 
     co_end(co);
 }
@@ -306,8 +331,8 @@ void some_game_object_behaviors( coro* co, void*, void* )
 
 ## call-arguments
 
-So how about argument to coroutines? You guessed it, lets just pass them on the stack! Both `co_init()` and `co_call` has versions
-that accepts a pointer to an argument + size/alignment. Example
+So how about argument to coroutines? You guessed it, lets just pass them on the stack! Both `co_init()` and `co_call()` has
+versions that accepts a pointer to an argument + size/alignment. Example
 
 ```c++
 void some_game_object_move_on_path( coro* co, void*, int* path_index )
@@ -317,7 +342,7 @@ void some_game_object_move_on_path( coro* co, void*, int* path_index )
 
 void some_game_object_behaviors( coro* co, void*, void* )
 {
-    int path_to_take; // need to be pre-declared, see below =/
+    int path_to_take; // need to be declared before co_begin(), see below =/
 
     co_begin(co);
 
@@ -330,27 +355,43 @@ void some_game_object_behaviors( coro* co, void*, void* )
 ```
 
 The above will allocate space for the int and copy it onto the stack, and run `some_game_object_move_on_path`. The last argument
-to a `co_func` will be its arguments on `nullptr` if not used.
-An alert reader might have noticed that the argument is copied and that is true... and its copied by `memcpy` so keep the arguments
-simple. I guess you could add lots of c++ magic to move types and yada yada but I havn't needed it and personally I feel that the
-code just is simpler if my types can be copied by `memcpy`!
+to a `co_func` will be its arguments, or `nullptr` if not used.
+An alert reader might have noticed that the argument is copied onto the stack and that is true... and its copied by `memcpy` so 
+keep the arguments simple. I guess you could add lots of c++ magic to move types and *yada yada* but I haven't needed that. IHMO
+keeping types `memcpy`-able usually keeps code simpler and easier to work with!
 
 >
 > Note: there is also a version of co_call() and co_init() that deduce sizeof() and alignof() from arg.
 >
 
 Again, no destructor will be run for the argument!
-Also not the cast to (co_func)! I guess that this is not everyones cup of tea but personally I'd rather take the cast there than
-in the function itself but I guess that is a matter of taste. `co_func` declares the argument as `void*`.
+Lastly note the cast to (co_func)! I guess that this is not everyones cup of tea but personally I'd rather take the cast there 
+than in the function itself but I guess that is a matter of taste.
+
+
+## a note on 'waiting'
+
+I mentioned above that I would like to be able to do things such as `wait_for( timeout, move_to )`. That is however something
+that I have mostly left out in 'coro'. Why you ask? Well, I can't really know how the user structures their code, how do they
+want to update the coroutines etc.
+If I would have supported something like that the lib would have become bigger and more 'opinionated', maybe it would have
+needed an update and a manager of some kind etc. That would have brought the lib from being a simple building-block to something
+more "framework:y" and that is not my intent. Maybe someday I'll do something like that but then it will be built upon 'coro' not
+bulit into.
+But there is one small helper for building this kind of code, and that is `co_wait()`. co_wait() is basically a `co_yield()` that
+also sets a flag on the coroutine. This flag is also propagated through the currently running coroutine-callstack so that the
+user can do `co_waiting(&co)` at the top-level and see if it is waiting for something. This flag will be cleared on the next
+call to `co_resume()`.
+I think this little addition will be enough to build your own system on top of if you need it.
 
 
 # Conclusion
 
-So in conclusion, what can be said? Well first of all I'm curious to see if it really works when I actually start to use it ;)
-I.e. my next task is to actually use this for something productive ( nope haven't done that yet! ) but it feels like it is 
-something that will work well! ( insert "Narrator: it didn't end well"-joke here )
+First of all I need to say that I'm curious to see if it really works when I actually start to use it ;)
+I.e. my next task is to actually use this for something productive ( nope haven't done that yet! ). It looks like it is 
+something that will work well but you never know! ( insert "Narrator: it didn't end well"-joke here )
 
-But let's just take a look at some pros/cons to end this post.
+Secondly let's take a look at some pros/cons of this approach.
 
 
 ## Pro: No platform specific code
@@ -361,22 +402,22 @@ registers. No thoughts about "what happens if we start porting to a new platform
 
 ## Pro: Not much code
 
-Also it is quite small ( at the time of writing 435 lines of code with quite a bit of comments ) and that is always a good thing
-if you just want to try it out and see if it feels good, if it does maybe move on to a "heavier" solution if needed?
+Also it is quite small ( at the time of writing 193 lines of code + 313 lines of comments ) and that is always a good thing
+for maintenance and "ease of use". 
 
 
 ## Con: Easy to mess up locals
 
 It is easy to mess up your local variables as it is second nature for every one of us to just declare a variable and expect it
 to keep its value :)
-My guess is however that you learn quickly and hopefully `co_declare_locals()` make it easier.
+My guess however is that you learn quickly and hopefully `co_locals_begin()/co_locals_end()` make it a bit easier.
 
 
 ## Con: Macro-heavy
 
-Personally I'm not that afraid of macros but I know some are. Also in this case they require quite a bit of things and end up
-producing quite hard to understand errors if you fudge up. Again I think this is something that you learn but the more of you
-on a team the more people to learn and the more of you to fudge up a few times.
+Personally I'm not that afraid of macros but I know some are. Also in this case they require you to follow quite a few rules and
+if you break them you end up with quite hard to understand errors. Again I think this is something that you learn but the more of you
+on your team the more people that have to learn and the fudge up a few times.
 
 An macro-related error that can be quite hard to understand if you are new to the code is this
 
@@ -395,7 +436,7 @@ void some_game_object_behaviors( coro* co, void*, void* )
 }
 ```
 
-This code looks perfectly valid but generates this on installed gcc.
+This code looks perfectly valid but generates this on my currently installed gcc.
 
 > test/test_coro.cpp: In function ‘void some_game_object_behaviors(coro*, void*, void*)’:
 > test/test_coro.cpp:43:16: error: jump to case label [-fpermissive]
@@ -414,5 +455,9 @@ would be appreciated ( easy on the meta-programming please ) !
 
 # Final note
 
-Any thoughts or suggestions? Is this something that might be useful for you, I would love to hear about it!
+I think this turned out nicely and hope that its something that might be useful for some of you. On a bigger team
+with more resources, would I use this? Maybe? I think a full-scale stack-register switch might be a better solution
+but that has its own caveats ( TLS-variables for example ).
+
+Any thoughts or suggestions? I would love to hear about it!
 Please hit me up on twitter or post in the coro issue-tracker! And remember, there will be bugs, there always is!
