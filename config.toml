@@ -1,5 +1,5 @@
 theme = "harbor"
-baseurl = "https://kihlander.net/"
+baseurl = "http://kihlander.net/"
 title = "What could possibly go wrong?"
 paginate = 3
 languageCode = "en"
