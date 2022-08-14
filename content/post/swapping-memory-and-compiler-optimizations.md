@@ -6,15 +6,7 @@ draft: true
 toc: true
 ---
 
-> TODO: go over all godbolt links and make sure they show the right things... embed them?
-
-> TODO: make sure all asm-listings are correct after the gcc downgrade!
-
-> TODO: all asm-listings need a *title*!
-
 > TODO: go over the numbers one more time!
-
-> TODO: caveat on micro-benchmarking!
 
 During my vacation for the holidays I thought that maybe I wanted some smaller project that you could fit in together with "family life" (not the easiest of endevours!) and I got to think about some old code that I had laying about in my own little game-engine that I have thought about making public for a while.
 I thought it might be useful for someone else and maybe just doing some optimization work on it might be a fun little distraction!
@@ -48,6 +40,7 @@ And I'll use the compilers that I have installed, that being
 >
 > **GCC:** g++ (Ubuntu 9.3.0-17ubuntu1~20.04) 9.3.0
 
+And all the usual caveats on micro-benchmarking goes here as well!
 
 ## Swapping memory buffers
 
@@ -123,8 +116,8 @@ Time to take a look at the results, we'll look at perf at different optimization
 
 > the variance on these are quite high, so these numbers is me 'getting feeling' and guessing at a mean :)
 
-![memswap_generic,time](/images/swapping-memory-and-compiler-optimizations/memswap_generic_time.png "memswap_generic, time for 4MB")
-![memswap_generic,size](/images/swapping-memory-and-compiler-optimizations/memswap_generic_size.png "memswap_generic, codesize")
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_time.png "memswap_generic, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_time.png)
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_size.png "memswap_generic, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_size.png)
 
 > At the time of writing I do not have access to a windows-machine for me to test out msvc on but I will add a few observations on generated code fetched via [compiler explorer](https://godbolt.org/) but no numbers.
 
@@ -331,15 +324,18 @@ inline void memswap_memcpy( void* ptr1, void* ptr2, size_t bytes )
 ```
 
 First, lets compare with the generic implementation.
-![memswap_memcpy,time](/images/swapping-memory-and-compiler-optimizations/memswap_generic_memcpy_time.png "memswap_memcpy, time for 4MB")
-![memswap_memcpy,size](/images/swapping-memory-and-compiler-optimizations/memswap_generic_memcpy_size.png "memswap_memcpy, codesize")
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_memcpy_time.png "memswap_memcpy, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_memcpy_time.png)
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_memcpy_size.png "memswap_memcpy, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_memcpy_size.png)
+
+[testid]
 
 ... and lets just look at the memcpy-versions by them self.
-![memswap_memcpy,time](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_time.png "memswap_memcpy, time for 4MB")
-![memswap_memcpy,size](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_size.png "memswap_memcpy, codesize")
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_time.png "memswap_memcpy, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_time.png)
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_size.png "memswap_memcpy, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_size.png)
 
 Now this is better! Both for clang ang gcc we are outperforming the 'generic' implementation by a huge margin in debug and we see clang being close to the same perf as -O2/-O3 in debug!:
 
+**Debug perf**
 |       | generic | bytes/sec | memcpy  | bytes/sec | perf |
 |-------|---------|-----------|---------|-----------|------|
 | clang | 9600 us |           |  370 us |           |  26x |
@@ -387,8 +383,8 @@ inline void memswap_memcpy( void* ptr1, void* ptr2, size_t bytes )
 }
 ```
 
-![memswap_memcpy_ptr,time](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_ptr_time.png "memswap_memcpy_ptr, time for 4MB")
-![memswap_memcpy_ptr,size](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_ptr_size.png "memswap_memcpy_ptr, codesize")
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_ptr_time.png "memswap_memcpy_ptr, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_ptr_time.png)
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_ptr_size.png "memswap_memcpy_ptr, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_ptr_size.png)
 
 First observation, clang generate the same code for all configs except `-O0`.
 
@@ -396,6 +392,8 @@ Secondly, in `-O0`, we see WAY better perf on gcc and slightly better on clang. 
 
 Next up, lets have a look at `-O2/-O3`, here we see that clang still decide to just call `memcpy()` and be done with it while gcc tries to be smart and add an inlined vectorized implementation using the SSE-registers (this is the same vectorization that it uses when just use pure `memcpy()`).
 Unfortunatly for GCC it's generated memcpy-replacement is both slower and bulkier than just calling `memcpy()` directly resulting in both slower and bigger code :(
+
+An interresting observation here is that in the measurements here we see that clang is faster when going through a function pointer than directly calling `memcpy()`. I found this quite odd and checked the generated assembly... and that is identical! Ås I wrote earlier, all the usual caveats on micro benchmarking apply :D !
 
 
 ### Why is clang faster in `-Os` than any of the other configs?
@@ -410,6 +408,7 @@ One really interresting observation here is that clangs implementation in `-Os` 
 whoppa?
 
 // observations, yet again clang faster (inspect asm to tell why)
+
 // gcc is generating big code, why? (inlining of memcpy?)
 
 
@@ -448,12 +447,12 @@ inline void memswap_sse2( void* ptr1, void* ptr2, size_t bytes )
 ```
 
 Again lets compare with the generic implementation.
-![memswap_sse2,time](/images/swapping-memory-and-compiler-optimizations/memswap_generic_sse2_time.png "memswap_sse2, time for 4MB")
-![memswap_sse2,size](/images/swapping-memory-and-compiler-optimizations/memswap_generic_sse2_size.png "memswap_sse2, codesize")
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_sse2_time.png "memswap_sse2, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_sse2_time.png)
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_sse2_size.png "memswap_sse2, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_sse2_size.png)
 
 ... and the sse2-versions among them selfs.
-![memswap_sse2,time](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_time.png "memswap_sse2, time for 4MB")
-![memswap_sse2,size](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_size.png "memswap_sse2, codesize")
+[![memswap_sse2,time](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_time.png "memswap_sse2, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_time.png)
+[![memswap_sse2,size](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_size.png "memswap_sse2, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_size.png)
 
 > TODO: table of times listing generic, memcpy and sse2
 
@@ -496,8 +495,8 @@ inline void memswap_avx( void* ptr1, void* ptr2, size_t bytes )
 ```
 
 Avx vs SSE2
-![memswap_avx,time](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_time.png "memswap_avx, time for 4MB")
-![memswap_avx,size](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_size.png "memswap_avx, codesize")
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_time.png "memswap_avx, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_time.png)
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_size.png "memswap_avx, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_size.png)
 
 // reflections go here
 
@@ -544,8 +543,8 @@ Another thing we found when looking at clangs generated SSE-code was that it was
 				 bytes - chunks * sizeof(__m128));
 ```
 
-![memswap_unroll,time](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_time.png "memswap_unroll, time for 4MB")
-![memswap_unroll,size](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_size.png "memswap_unroll, codesize")
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_time.png "memswap_unroll, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_time.png)
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_size.png "memswap_unroll, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_size.png)
 
 // reflections go here
 
@@ -587,8 +586,8 @@ So let's add some benchmarks and just test it out! According to all info I can f
 
 So lets, add the benchmark, run and... OH MY GOD!
 
-![memswap_all,time](/images/swapping-memory-and-compiler-optimizations/memswap_all_time.png "memswap_all, time for 4MB")
-![memswap_all,size](/images/swapping-memory-and-compiler-optimizations/memswap_all_size.png "memswap_all, codesize")
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_all_time.png "memswap_all, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_all_time.png)
+[![](/images/swapping-memory-and-compiler-optimizations/memswap_all_size.png "memswap_all, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_all_size.png)
 
 On my machine, with -Os, it runs about **x slower on clang and **x slower on gcc than the generic version we started of with! And compared to the fastest ones that we have implemented ourself its almost **x slower in debug! Even if we don't "cheat" and call into an optimized memcpy we can quite easily device a version that run around **x faster!
 
@@ -762,6 +761,9 @@ I can see the logic behind "just have one implementation for all cases" and how 
 // I must have missed a bunch of parameters and how these would skew the results in different directions.
 
 > TODO: add note about upgraded gcc and putting that in a separate article!
+
+> TODO: mention Vittorio Romeo @supahvee1234 and his work on similar issues lately.
+
 
 ## Apendix
 
@@ -1145,8 +1147,6 @@ This is beyond a travesty... the compilers has generated CALLS to std::remove_re
 ON GCC enable_if is 118 BYTES!!! I see why this is the case... but why did we come to this!?!
 
 // NOTE: added a test on 4MB std::array as well and it is just implemented with swap_ranges, thus the same result! (with the added niceness of extra call-instructions to begin() and end()!)
-
-// godbolt link!
 
 // for the swedish readers "me: so have you tried to run this code in Debug? c++-developers: 
 
