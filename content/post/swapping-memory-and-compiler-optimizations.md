@@ -121,7 +121,7 @@ Time to take a look at the results, we'll look at perf at different optimization
 > the variance on these are quite high, so these numbers is me 'getting feeling' and guessing at a mean :)
 
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_time.png "memswap_generic, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_time.png)
-[![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_size.png "memswap_generic, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_size.png)
+
 
 ### Debug - `-O0`
 
@@ -321,11 +321,9 @@ inline void memswap_memcpy( void* ptr1, void* ptr2, size_t bytes )
 
 First, lets compare with the generic implementation.
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_memcpy_time.png "memswap_memcpy, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_memcpy_time.png)
-[![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_memcpy_size.png "memswap_memcpy, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_memcpy_size.png)
 
 ... and lets just look at the memcpy-versions by them self.
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_time.png "memswap_memcpy, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_time.png)
-[![](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_size.png "memswap_memcpy, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_size.png)
 
 Now this is better! Both for clang ang gcc we are outperforming the 'generic' implementation by a huge margin in debug and we see clang being close to the same perf as -O2/-O3 in debug!:
 
@@ -379,7 +377,6 @@ inline void memswap_memcpy( void* ptr1, void* ptr2, size_t bytes )
 ```
 
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_ptr_time.png "memswap_memcpy_ptr, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_ptr_time.png)
-[![](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_ptr_size.png "memswap_memcpy_ptr, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_ptr_size.png)
 
 First observation, clang generate the same code for all configs except `-O0`.
 
@@ -434,11 +431,9 @@ inline void memswap_sse2( void* ptr1, void* ptr2, size_t bytes )
 
 Again lets compare with the generic implementation.
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_sse2_time.png "memswap_sse2, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_sse2_time.png)
-[![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_sse2_size.png "memswap_sse2, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_sse2_size.png)
 
 ... and the sse2-versions among them selfs.
 [![memswap_sse2,time](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_time.png "memswap_sse2, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_time.png)
-[![memswap_sse2,size](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_size.png "memswap_sse2, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_size.png)
 
 > TODO: table of times listing generic, memcpy and sse2
 
@@ -482,7 +477,6 @@ inline void memswap_avx( void* ptr1, void* ptr2, size_t bytes )
 
 Avx vs SSE2
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_time.png "memswap_avx, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_time.png)
-[![](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_size.png "memswap_avx, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_size.png)
 
 They seem fairly similar in perf even as the AVX implementation is consistently slightly faster in optimized builds. Clang being generally performing a bit better than gcc perf-wise.
 However the most interresting thing is seeing that clang in `-O0` makes such a poor job of AVX compared to SSE while gcc seems to handle it just fine, actually generating faster `-O0`-code than the SSE-versions.
@@ -527,7 +521,6 @@ Another thing we found when looking at clangs generated SSE-code was that it was
 ```
 
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_time.png "memswap_unroll, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_time.png)
-[![](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_size.png "memswap_unroll, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_size.png)
 
 // reflections go here
 
@@ -570,7 +563,6 @@ So let's add some benchmarks and just test it out! According to all info I can f
 So lets, add the benchmark, run and... OH MY GOD!
 
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_all_time.png "memswap_all, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_all_time.png)
-[![](/images/swapping-memory-and-compiler-optimizations/memswap_all_size.png "memswap_all, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_all_size.png)
 
 On my machine, with -O0, it runs in about 3.3x the time on clang and 4.7x slower on gcc than the generic version we started of with! And compared to the fastest ones that we have implemented ourself its almost 112x slower in debug! Even if we don't "cheat" and call into an optimized memcpy we can quite easily device a version that run around 32x faster!
 
@@ -723,7 +715,10 @@ So just for completeness, lets have a quick look at code size of the different i
 
 > `std::swap_ranges` in `-O0` is an estimate and sum of all non-inlined std functions, functions used are 
 
-// TODO: graph go here '--type bar-vertical --set Os ../memcpy_util/size.csv --title-chart "memswap_generic, code size" --values-unit byte'
+[![](/images/swapping-memory-and-compiler-optimizations/code_size_O0.png "code size -O0")](/images/swapping-memory-and-compiler-optimizations/code_size_O0.png)
+[![](/images/swapping-memory-and-compiler-optimizations/code_size_Os.png "code size -Os")](/images/swapping-memory-and-compiler-optimizations/code_size_Os.png)
+[![](/images/swapping-memory-and-compiler-optimizations/code_size_O2.png "code size -O2")](/images/swapping-memory-and-compiler-optimizations/code_size_O2.png)
+[![](/images/swapping-memory-and-compiler-optimizations/code_size_O3.png "code size -O3")](/images/swapping-memory-and-compiler-optimizations/code_size_O3.png)
 
 What is most interresting to note is that GCC is, in most cases, generating much smaller code and seem to optimize for that a lot harder. Could that be due to gcc being used more in software where that is more desireable? I can only guess and it surely seems like it.
 
