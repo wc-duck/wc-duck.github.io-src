@@ -8,6 +8,10 @@ toc: true
 
 > TODO: go over the numbers one more time!
 
+> TODO: gen bigger graphs and see how that looks!
+
+> TODO: remove code-size graphs and move to the codesize section.
+
 During my vacation for the holidays I thought that maybe I wanted some smaller project that you could fit in together with "family life" (not the easiest of endevours!) and I got to think about some old code that I had laying about in my own little game-engine that I have thought about making public for a while.
 I thought it might be useful for someone else and maybe just doing some optimization work on it might be a fun little distraction!
 
@@ -119,17 +123,19 @@ Time to take a look at the results, we'll look at perf at different optimization
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_time.png "memswap_generic, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_time.png)
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_size.png "memswap_generic, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_size.png)
 
-> At the time of writing I do not have access to a windows-machine for me to test out msvc on but I will add a few observations on generated code fetched via [compiler explorer](https://godbolt.org/) but no numbers.
-
-> **dumping function size**
->
-> For most readers this is nothing new, but dumping symbol/function-sizes is easily done on most unix:es with the use of 'nm'.
->
-> `nm --print-size -C local/linux_x86_64/clang/O2/memcpy_util_bench | grep memswap`
-
 ### Debug - `-O0`
 
 Lets start with `-O0` and just conclude that both clang and gcc generates basically the same code as would be expected. There is nothing magic here (and nor should there be!) and the code performs there after. A simple for-loop that swaps values as stated in the code.
+
+> **looking at the generated assembly**
+>
+> Again most readers might be familiar with this but checking the generated asm on unix:es is easily done with 'objdump'
+>
+> `objdump -C -d local/linux_x86_64/gcc/O2/memcpy_util_bench | less`
+>
+> or using the excelent little tool [bat](https://github.com/sharkdp/bat) to get some nice syntax-highlighting
+>
+> `objdump -C -d local/linux_x86_64/gcc/O2/memcpy_util_bench | bat -l asm`
 
 *clang -O0*
 ```asm
@@ -220,16 +226,6 @@ At -O2 we will see that clang finds that it can use the SSE-registers to copy th
 
 If we look at the generated assembly we can see that the meat-and-potatoes of this function just falls down to copying the data with SSE vector-registers + a preamble that handles all bytes that are not an even multiple of 16, i.e. can't be handled by the vector registers.
 
-> **looking at the generated assembly**
->
-> Again most readers might be familiar with this but checking the generated asm on unix:es is easily done with 'objdump'
->
-> `objdump -C -d local/linux_x86_64/gcc/O2/memcpy_util_bench | less`
->
-> or using the excelent little tool [bat](https://github.com/sharkdp/bat) to get some nice syntax-highlighting
->
-> `objdump -C -d local/linux_x86_64/gcc/O2/memcpy_util_bench | bat -l asm`
-
 Listing the assembly generated here might is quite verbose, but the main loop doing the heavy lifting looks like this:
 
 *clang -O2/-O3*
@@ -295,7 +291,7 @@ Well, loop-unrolling :)
 In `-Os` both clang and gcc generate almost identical code, and that is code very close to what gcc generates in `-02`. Really small, efficient "enough"... ok I guess. 
 
 
-## memcpy() in chunks
+## Use memcpy() in chunks
 
 So what can we do to generate better code on gcc in `-O2`? How about we try to just change the copy to use `memcpy()` instead? I.e. using `memcpy()` in chunks of, lets say 256 bytes? This should hopefully also improve our perf in `-O0`
 
@@ -327,8 +323,6 @@ First, lets compare with the generic implementation.
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_memcpy_time.png "memswap_memcpy, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_memcpy_time.png)
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_generic_memcpy_size.png "memswap_memcpy, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_generic_memcpy_size.png)
 
-[testid]
-
 ... and lets just look at the memcpy-versions by them self.
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_time.png "memswap_memcpy, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_time.png)
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_size.png "memswap_memcpy, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_memcpy_size.png)
@@ -342,6 +336,7 @@ Now this is better! Both for clang ang gcc we are outperforming the 'generic' im
 | gcc   | 9600 us |           |  525 us |           |  18x |
 
 There are a few things that we might want to dig into here!
+
 
 ### Why is clang this much faster than gcc?
 
@@ -403,15 +398,6 @@ One really interresting observation here is that clangs implementation in `-Os` 
 // do it :)
 
 
-### codesizes?
-
-whoppa?
-
-// observations, yet again clang faster (inspect asm to tell why)
-
-// gcc is generating big code, why? (inlining of memcpy?)
-
-
 ### memcpy(), to inline or not to inline, thats the question?
 
 Calling memcpy or inlining? seems to depend on if the compiler can assume alignment of type that is copied, clang will fall back to calling memcpy() and gcc to a really inefficient loop where the call to memcpy is faster.
@@ -458,7 +444,7 @@ Again lets compare with the generic implementation.
 
 Now we'r talking. By sacrificing support on all platforms and only focusing on x86 we can get both compilers to generate code that can compete with the calls to `memcpy()` in all but the `-O0` builds. IHMO that is not surprising as we are comparing an optimized `memcpy()` against unoptimized code, however 1.5ms compared to the generic implementations 9.6ms is nothing to scoff at!
 
-> Im wondering if it is worth calling the memcpy() version in debug-builds and the sse version in the other builds but I'm not really sure as it is kind of "lying"!
+> For better perf it seems it might be worth calling the memcpy-version in debug, but should one select different codepaths depending on optimization level... not really sure? Maybe hide it behind a define and let the user decide?
 
 
 ### `-Os` is the fastes config, why?
@@ -498,13 +484,10 @@ Avx vs SSE2
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_time.png "memswap_avx, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_time.png)
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_size.png "memswap_avx, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_size.png)
 
-// reflections go here
+They seem fairly similar in perf even as the AVX implementation is consistently slightly faster in optimized builds. Clang being generally performing a bit better than gcc perf-wise.
+However the most interresting thing is seeing that clang in `-O0` makes such a poor job of AVX compared to SSE while gcc seems to handle it just fine, actually generating faster `-O0`-code than the SSE-versions.
 
-// gcc -O0 is about double the perf ov clang!
-
-// clang generate slower code in -O0 for avx vs sse!
-
-// otherwise, clang generally faster (but not with a big margin)
+So what is it that clang miss and what is it that gcc do better? Again, lets dig in to the generated assembly.
 
 
 ## Unrolling!
@@ -581,7 +564,7 @@ Lets add benchmarks on swapping buffers from 16 bytes up to 2GB in "resonable" i
 
 ## How about std::swap_ranges() and std::swap()?
 
-Now I guess some of you ask yourself, why doesn't he just use what is given to him by the c++ standrad library? It is after all "standard" and available to all by default!
+Now I guess some of you ask yourself, why doesn't he just use what is given to him by the c++ standrad library? It is after all "standard" and available to all by default, it should be at least decent right?
 So let's add some benchmarks and just test it out! According to all info I can find [`std::swap_ranges()`](https://en.cppreference.com/w/cpp/algorithm/swap_ranges) is the way to go.
 
 So lets, add the benchmark, run and... OH MY GOD!
@@ -589,9 +572,9 @@ So lets, add the benchmark, run and... OH MY GOD!
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_all_time.png "memswap_all, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_all_time.png)
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_all_size.png "memswap_all, codesize")](/images/swapping-memory-and-compiler-optimizations/memswap_all_size.png)
 
-On my machine, with -Os, it runs about **x slower on clang and **x slower on gcc than the generic version we started of with! And compared to the fastest ones that we have implemented ourself its almost **x slower in debug! Even if we don't "cheat" and call into an optimized memcpy we can quite easily device a version that run around **x faster!
+On my machine, with -O0, it runs in about 3.3x the time on clang and 4.7x slower on gcc than the generic version we started of with! And compared to the fastest ones that we have implemented ourself its almost 112x slower in debug! Even if we don't "cheat" and call into an optimized memcpy we can quite easily device a version that run around 32x faster!
 
-Even the optimized builds only reach the same perf as we do with the standard 'generic' implementation we had to begin with!
+Even the optimized builds only reach the same perf as we do with the standard 'generic' implementation we had to begin with, not to weird as if you look at its implementation it is basically a really complex way of writing what we had in the generic case!
 
 > I'm leaving comparing compile-time of "generic loop" vs "memcpy_util" vs "std::swap_ranges()" as an excersize for the reader!
 
@@ -701,18 +684,63 @@ std::remove_reference<unsigned char&>::type&& std::move<unsigned char&>(unsigned
         ret
 ```
 
-Ouch... we have `call` instructions generated for `std::remove_reference`, `std::enable_if` and `std::iter_swap` (so much for zero-cost abstractions)... and there is nothing wrong with that from a compiler standpoint, you told it that you had functions that needed to be called so the compiler will generate a functions call!
-FYI the same code is generated for std::swap on an std::array and similar constructs as well.
+Ouch... we have `call` instructions generated for `std::remove_reference`, `std::enable_if` and `std::iter_swap` (so much for zero-cost abstractions)... and there is nothing wrong with that from a compiler standpoint, you told it that you had functions that needed to be called so the compiler will generate the functions call!
+FYI the same code is generated for `std::swap`, `std::array` and similar constructs as well.
 
 Why did the code end up like this? I can't really answer that as I have neither written or, with an emphasis on, maintained a standard library implementation. I see that the generic code that we have there today lead to less code to maintain and maybe the concept of swapping buffers of memcpy:able data is not something that `std::swap_ranges` isn't often used for but there is absolutely room for improvement here.
 
 Just having a top-level check for "can be moved via memcpy()" and have a plain for-loop in that case would generate faster code in debug-builds for all of us.
-But as stated, I have not worked on a standard library implementation nor have I maintained one so I'm sure that I have missed lots of details here /*shrug emote go here!*/
+But as stated, I have not worked on a standard library implementation nor have I maintained one (a "standard library" for a commercial, AAA game-engine however!) so I'm sure that I have missed lots of details here *¯\\_(ツ)_/¯*
+
+What rubs me the wrong way with this is that there is nothing in the spec of `std::swap_ranges` that say that it has to be implemented(!) generically for all underlying types. If the type can be moved with a `memcpy` it could be implemented by a simple loop (or even better something optimized!).
+
+This is code and APIs used by millions of developers around the world, all of them having less of a chance to use a debug-build to track down their hairy bugs and issues.
+I can see the logic behind "just have one implementation for all cases" and how that might make sense if you look at code from a "purity" standpoint but in this case there are such a huge amount of developers that are affected that imho that "purity" is not important at all in my mind. Your assignment as standard library developers should not be to write readable and "nice" code (or maybe it is and in that case that is not the right focus!) it is to write something that work well for all the developers using your code! And that goes for non-optizied builds as well!
+
+
+## Why the slow memcpy()
+
+// noticed that my memswaps was running faster than 2*memcpy. Can we write a faster memcpy as well?
+// Why can I do it faster with SSE/AVX... what did I miss? There must be a reason!
+
+
+## A short note on codesize
+
+A short note on codesize as we havn't really dug into it yet. From my point of view code-size of this code is not really interresting. Back in the old days of the PS3 and SPU:s it definitively was, but today I think there is bigger fish to fry. At least for code like this that tend to only be called in a few spots.
+However if it would be a problem as simple fix would be to just not inline the code as is done now. I doubdt that on the kind of buffersizes where this would be used that extra call overhead would make any differance what so ever.
+
+However for other sectors of this business I guess it could be of a lot of importance.
+
+So just for completeness, lets have a quick look at code size of the different investigated implementations.
+
+> At the time of writing I do not have access to a windows-machine for me to test out msvc on but I will add a few observations on generated code fetched via [compiler explorer](https://godbolt.org/) but no numbers.
+
+> **dumping function size**
+>
+> For most readers this is nothing new, but dumping symbol/function-sizes is easily done on most unix:es with the use of 'nm'.
+>
+> `nm --print-size -C local/linux_x86_64/clang/O2/memcpy_util_bench | grep memswap`
+
+> `std::swap_ranges` in `-O0` is an estimate and sum of all non-inlined std functions, functions used are 
+
+// TODO: graph go here '--type bar-vertical --set Os ../memcpy_util/size.csv --title-chart "memswap_generic, code size" --values-unit byte'
+
+What is most interresting to note is that GCC is, in most cases, generating much smaller code and seem to optimize for that a lot harder. Could that be due to gcc being used more in software where that is more desireable? I can only guess and it surely seems like it.
+
+It would be interresting to hear if there is someone with more knowleage about this than me :)
 
 
 ## Summary
 
-> TODO: diff between gcc/clang somewhere else?
+So what have we learned? Honestly I'm not really sure :) Writing compilers that generate good code is hard? Honestly I feel that both clang and gcc do a decent job at what is presented to them, of course there is things you can do if you know your problem up front compared to producing an optimized result from ????.
+
+This might seem like ordinary bashing of c++ standard libraries and I really didn't want it to be... but debug perf is important! Compile time is important! and it seems like it isn't really taken into account when it should be.
+I'm not alone in seeing this. In the last year we have seen other more "c++-leaning" developers also raising this issue. For example [Vittorio Romeo](https://twitter.com/supahvee1234) has been raising that `std::move`, `std::forward` generate expensive calls in debug that really isn't needed and has been pushing for changes to both clang and gcc.
+
+See:
+{{< youtube ffFT-gIPCRE >}}
+
+Personally I would just like to see less `std::` and less metaprogramming in the code I work in, but since I work in reallity it is kind of hard to avoid so I think work being done on making these kind of things cheaper is very welcome!
 
 > TODO: is it worth writing your own memcpy!?! and what do you call that? that might be scary! But might be worth it in specific cases! And how come it isn't faster? If I, as a clutz could do it? What am I missing, and I guess it is something!
 
@@ -722,7 +750,6 @@ But as stated, I have not worked on a standard library implementation nor have I
 
 > TODO:in the end, on bigger buffers, blocked by memory-speed
 
-> TODO: note gcc and clang do the same optimizations on -03, but clang decides to do it on -O2 as well!
 What optimizations?
 
 optimize great on clang, but no other platform... copy by uint64_t? I guess it is some detected heuristic in clang?
@@ -731,38 +758,19 @@ I guess it is hard to write compilers!!! different optimizations == different tr
 
 clang in REALLY aggressive with its loop-unrolling + vectorization
 
---> give some numbers for msvc here, write about std::array<uint8_t>, std::vector<uint8_t> and std::swap on msvc.
-
 gcc and noinline gain a lot of perf!?!
 
 > TODO: something about clearing the cache!
 
 > TODO: note about unrolled avx clang vs gcc!
 
-
-## why the slow memcpy()
-
-// noticed that my memswaps was running faster than 2*memcpy. Can we write a faster memcpy as well?
-// Why can I do it faster with SSE/AVX... what did I miss? There must be a reason!
-
-
-## Conclusions
-
 // * limited by memory-speed
 // * clang, in these cases never seems to make any different choices between -O2 and -O3
 // * TODO: CONCLUSIONS gcc seems better at generating small code, more used on embedded?
 
-// SOME HEADING HERE?
-What rubs me the wrong way with this is that there is nothing in the spec of `std::swap_ranges` that say that it has to be implemented generically for all underlying types. If the type can be moved with a `memcpy` it could be implemented by a simple loop (or even better something optimized!).
-
-This is code and APIs used by millions of developers around the world, all of them having less of a chance to use a debug-build to track down their hairy bugs and issues.
-I can see the logic behind "just have one implementation for all cases" and how that might make sense if you look at code from a "purity" standpoint but in this case there are such a huge amount of developers that are affected that imho that "purity" is not important at all. Your assignment as standard library developers is not to write readable and "nice" code (or maybe it is and in that case that is not the right focus!) it is to write something that work well for all the ones using your code! And that goes for non-optizied builds as well!
-
 // I must have missed a bunch of parameters and how these would skew the results in different directions.
 
 > TODO: add note about upgraded gcc and putting that in a separate article!
-
-> TODO: mention Vittorio Romeo @supahvee1234 and his work on similar issues lately.
 
 
 ## Apendix
@@ -1143,9 +1151,6 @@ I can see the logic behind "just have one implementation for all cases" and how 
 
 ## TOREMOVE
 
-This is beyond a travesty... the compilers has generated CALLS to std::remove_reference and if compiling with c++17 support to enable_if!!!
-ON GCC enable_if is 118 BYTES!!! I see why this is the case... but why did we come to this!?!
-
 // NOTE: added a test on 4MB std::array as well and it is just implemented with swap_ranges, thus the same result! (with the added niceness of extra call-instructions to begin() and end()!)
 
 // for the swedish readers "me: so have you tried to run this code in Debug? c++-developers: 
@@ -1156,3 +1161,4 @@ ON GCC enable_if is 118 BYTES!!! I see why this is the case... but why did we co
 // TODO: add measurements of std::swap_ranges and pure memcpy!
 
 // TODO: graphs!
+P
