@@ -8,22 +8,18 @@ toc: true
 
 > TODO: go over the numbers one more time!
 
-> TODO: gen bigger graphs and see how that looks!
-
-> TODO: remove code-size graphs and move to the codesize section.
-
 During my vacation for the holidays I thought that maybe I wanted some smaller project that you could fit in together with "family life" (not the easiest of endevours!) and I got to think about some old code that I had laying about in my own little game-engine that I have thought about making public for a while.
 I thought it might be useful for someone else and maybe just doing some optimization work on it might be a fun little distraction!
 
 ## memcpy_util.h
 
-That code was a small header called [memcpy_util.h](todo/github/link) containing functions to work on memory buffers, operations such as copy, swap, rotate, flip etc.
+That code was a small header called [memcpy_util.h](https://github.com/wc-duck/memcpy_util) containing functions to work on memory buffers, operations such as copy, swap, rotate, flip etc.
 
 Said and done, I did set out to work on breaking it out of my own codebase, updating docs, fixing some API:s, adding a few more unittests and putting some benchmarks around the code as prep for having a go at optimizing the functions at hand.
 
 Kudos to [Scott Vokes](https://twitter.com/silentbicycle) for [greatest.h](https://github.com/silentbicycle/greatest) and [Neil Henning](https://www.duskborn.com/) for the exelent little [ubench.h](https://github.com/sheredom/ubench.h)!.
 
-When the code will see the light of day outside my own code is still to be decided, but some quite interesting things popped out while benchmarking the code. I would say that most of this is not rocket-surgery and many of you migth not find something new in here. But what the heck, the worst thing that can happen is that someone comes around and tell me that I have done some obvious errors and I'll learn something, otherwise maybe someone else might learn a thing or two?
+The code is published on github at the same time as this post goes live. However some quite interesting things popped out while benchmarking the code. I would say that most of this is not rocket-surgery and many of you migth not find something new in here. But what the heck, the worst thing that can happen is that someone comes around and tell me that I have done some obvious errors and I'll learn something, otherwise maybe someone else might learn a thing or two?
 
 It should also be noted that what started as a single article might actually turn out to be a series, we'll see what happens :)
 
@@ -48,7 +44,7 @@ And all the usual caveats on micro-benchmarking goes here as well!
 
 ## Swapping memory buffers
 
-So we'll start where I started, by swapping memory in 2 buffers, something that is the basis of many of the other operations in memcpy_util.h, such as flipping an image.
+So we'll start where I started, by swapping memory in 2 buffers, something that is the basis of many of the other operations in [memcpy_util.h](https://github.com/wc-duck/memcpy_util), such as flipping an image.
 What I thought would be a quick introduction turned out to be the entire article, so lets get to swapping memory between 2 buffers!
 
 The first thing to notice is that `c` do not have a `memswap()`. c++ do have `std::swap_ranges()` but we'll get back to that later!
@@ -56,7 +52,7 @@ The first thing to notice is that `c` do not have a `memswap()`. c++ do have `st
 However, just implementing your own `memswap()` is a simple operation as long as you do not want to get fancy. I would consider this the simplest thing you could do!
 
 > Note:
-> I am not handling overlap of the buffers to swap in this version as that was not something that was currently needed and how do you define swapping buffers that overlap?
+> I am not handling overlap of the buffers to swap in this version as that was not something that was currently needed.
 > Probably there should be an assert() or similar that checks for overlap however.
 
 ## Generic memswap
@@ -116,7 +112,7 @@ UBENCH_EX(swap, big)
 
 Notice how `memswap()` was wrapped in a function marked as noinline, this as clang would just optimize the function away.
 
-Time to take a look at the results, we'll look at perf at different optimization level (perf in debug/-O0 is also important!) as well as generated code-size.
+Time to take a look at the results, we'll look at perf at different optimization level (perf in debug/`-O0` is also important!) as well as generated code-size.
 
 > the variance on these are quite high, so these numbers is me 'getting feeling' and guessing at a mean :)
 
@@ -125,7 +121,7 @@ Time to take a look at the results, we'll look at perf at different optimization
 
 ### Debug - `-O0`
 
-Lets start with `-O0` and just conclude that both clang and gcc generates basically the same code as would be expected. There is nothing magic here (and nor should there be!) and the code performs there after. A simple for-loop that swaps values as stated in the code.
+Lets start with `-O0` and just conclude that both clang and gcc generates basically the same code as would be expected. There is nothing magic here (and nor should there be in a debug-build!) and the code performs there after. A simple for-loop that swaps values as stated in the code.
 
 > **looking at the generated assembly**
 >
@@ -226,7 +222,7 @@ At -O2 we will see that clang finds that it can use the SSE-registers to copy th
 
 If we look at the generated assembly we can see that the meat-and-potatoes of this function just falls down to copying the data with SSE vector-registers + a preamble that handles all bytes that are not an even multiple of 16, i.e. can't be handled by the vector registers.
 
-Listing the assembly generated here might is quite verbose, but the main loop doing the heavy lifting looks like this:
+Listing the assembly generated here would be quite verbose, but the main loop doing the heavy lifting looks like this:
 
 *clang -O2/-O3*
 ```asm
@@ -328,10 +324,10 @@ First, lets compare with the generic implementation.
 Now this is better! Both for clang ang gcc we are outperforming the 'generic' implementation by a huge margin in debug and we see clang being close to the same perf as -O2/-O3 in debug!:
 
 **Debug perf**
-|       | generic | bytes/sec | memcpy  | bytes/sec | perf |
-|-------|---------|-----------|---------|-----------|------|
-| clang | 9600 us |           |  370 us |           |  26x |
-| gcc   | 9600 us |           |  525 us |           |  18x |
+|       | generic | GB/sec | memcpy  | GB/sec | perf |
+|-------|---------|--------|---------|--------|------|
+| clang | 9600 us |    0.4 |  370 us |   10.6 |  26x |
+| gcc   | 9600 us |    0.4 |  525 us |    7.4 |  18x |
 
 There are a few things that we might want to dig into here!
 
@@ -342,13 +338,13 @@ As we can see, clang is generating faster code in all configs, and usually small
 
 But what make the code generated by clang faster? Let's start with a look at `-O0` and the disassembly of the generated code.
 
-The actual assembly can be found in the appendix ([clang](#memswap_generic--o0-clang-assembly), [gcc](#memswap_generic--o0-gcc-assembly)) as the listing is quite big.
+The actual assembly can be found in the appendix ([clang](appendix/#memswap_generic--o0-clang), [gcc](appendix/#memswap_generic--o0-gcc)) as the listing is quite big.
 
 > TODO: I feel like I'm missing something here... is GCC inlining the copy for x bytes and if the copy is bigger it falls back to memcpy? Need to understand this better.
 
  Looking at the disassembly we can see that gcc has decided to replace many of the calls to `memcpy()` (however not all of them?) with a whole bunch of unrolled 'mov' instructions while clang has decided to still generate calls to `memcpy()`.
 
-Unfortunatly for gcc this inlined code is a lot slower than the standard library `memcpy()` implementation. That kind of makes sense that calling into an optimized `memcpy()` from debug code would yield faster execution. I don't know what heuristics went into this but I'll ascribe it to "it is hard to write a compiler and what is best for x is not necessarily best for y".
+Unfortunatly for gcc this inlined code is a lot slower than the standard library `memcpy()` implementation. That kind of makes sense that calling into an optimized `memcpy()` from debug code would yield faster execution when copying larger chunks of memory. I would guess that gcc has tried to optimized for the case where the `memcpy()` would be small and the jump to memcpy would eat all perf-gain? I don't know what heuristics went into this but I'll ascribe it to "it is hard to write a compiler and what is best for x is not necessarily best for y".
 
 One thing we can try is to get gcc to call `memcpy()` by calling it via a pointer and by that not inline it. Something like this?
 
@@ -385,14 +381,14 @@ Secondly, in `-O0`, we see WAY better perf on gcc and slightly better on clang. 
 Next up, lets have a look at `-O2/-O3`, here we see that clang still decide to just call `memcpy()` and be done with it while gcc tries to be smart and add an inlined vectorized implementation using the SSE-registers (this is the same vectorization that it uses when just use pure `memcpy()`).
 Unfortunatly for GCC it's generated memcpy-replacement is both slower and bulkier than just calling `memcpy()` directly resulting in both slower and bigger code :(
 
-An interresting observation here is that in the measurements here we see that clang is faster when going through a function pointer than directly calling `memcpy()`. I found this quite odd and checked the generated assembly... and that is identical! Ås I wrote earlier, all the usual caveats on micro benchmarking apply :D !
+An interresting observation here is that in the measurements here we see that clang is faster when going through a function pointer than directly calling `memcpy()`. I found this quite odd and checked the generated assembly... and that is identical! As I wrote earlier, all the usual caveats on micro benchmarking apply :D !
 
 
 ### Why is clang faster in `-Os` than any of the other configs?
 
 One really interresting observation here is that clangs implementation in `-Os` is the fastest one, faster than `-O2`/`-O3`. Lets dig into why that is!
 
-// do it :)
+> TODO: do it :)
 
 
 ### memcpy(), to inline or not to inline, thats the question?
@@ -483,6 +479,7 @@ However the most interresting thing is seeing that clang in `-O0` makes such a p
 
 So what is it that clang miss and what is it that gcc do better? Again, lets dig in to the generated assembly.
 
+> TODO: weird "segway" here... :( DO IT!
 
 ## Unrolling!
 
@@ -522,19 +519,50 @@ Another thing we found when looking at clangs generated SSE-code was that it was
 
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_time.png "memswap_unroll, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_time.png)
 
-// reflections go here
+Frist of, it seems that we gain a bit of per yes, nothing major but still nothing to scoff at! However what I find mostly interresting is how, in `-O0`, clang generate similar code as gcc for SSE, but way worse for AVX? What's going on here?
 
-// * quite a bit faster, compare time.
+If we inspec the generated assembly for the sse-version, both clang and gcc has generated almost the same code. There is an instruction here and there that are a bit different, but generally the same.
 
-// * quite a bit bigger, compare size.
+However for AVX the story is different... 
 
-// * for sse in -O0 clang and gcc generate very similar code but far from in for avx? What is the diff there? Why is clang worse by such a margin?
+> assembly can be found in the appendix, ([clang](appendix/#memswap_avx_unroll--o0-clang), [gcc](appendix/#memswap_avx_unroll--o0-gcc))
+
+first of, if we look at code size, we see that clang has generate a function clocking in at 1817 byte while gcc is clocking in at 1125 bytes.
+All of this diff in size is taken up by the fact tha gcc has decided to use `vinsertf128` and `vextractf128` while clang decide to do the same move to and from registers with your plain old `mov` and quite a few of them.
+
+I guess gcc has just been comming further in their AVX support than clang. This is not my field of expertise, so I might have missed something crucial here. If I have, please point it out!
 
 
 ## Compare against plain memcpy()
 
-To get some kind of benchmark it might also be worth comparing or swap against 
+To get some kind of benchmark of the memswap that we have it might also be worth comparing or swap against just doing a `memcpy()`.
 
+So lets add a benchmark just doing a `memcpy()` on the data instead of `memswap()` and see if there is some interresting things that show up.
+
+> TODO: graph!
+
+As we can see perf is mostly identical ... but that is to be expected as all implementations is just a call into stdlib and its `memcpy()`, give or take a few operations :)
+
+One thing that I however find more interresting is the fact that we in some configs see faster code from some of our own-implementations `memswap()` than `memcpy()`. I find this fascinating as the memswap will have to do more operations (swapping the memory) + write to 2 buffers instead of one?
+
+Could we write a faster `memcpy()` as well? Lets try and add a simple `memcpy()`-implementation taking our fastest memswaps, the unrolled sse and avx and see what numbers we can get.
+
+> TODO: code!
+
+It turns out that we can actually get faster by writing it ourself, at least in these synthetic micro-benchmarks. This surprised me as I would expect the systems `memcpy()` to be as fast as possible on the hardware that I got?
+In this case however there must be something I have missed and I would REALLY like to know what that is! If I could write a `memcpy()` with sse or avx so would the, I assume, smart people writing the stdlib code as well. And a function such as `memcpy()` that is called a lot, there should be perf across the board to save!
+
+Reasons for the slower system-`memcpy()` that I can think of is:
+
+* `memcpy()` is actually implemented as `memmove()`
+    this would add a clear perf implication as buffers might overlap. However couldn't this be checked as a pre-condition? Would that pre-condition just make really small memcpy:s slower?
+
+* using sse or avx will 'consume' shared resources of the cpu better spent on other things?
+    as the `memcpy()` on my linux-machine probably is optimized to run in a multi-process environment it might take that into consideration and using sse/avx like this might just consume resources better spent on other things?
+
+Could it be worth writing your own `memcpy()` like this... I would in most cases say "not really". But there might be cases where "you know what you are doing" and you have a copy-heavy workload, maybe? Especially if you are running exculsively on a machine such as developing games on a console like playstations or xboxes. Probably, however, you would be more likely to find more perf somewhere else :)
+
+But if you need it, [memcpy_util.h](https://github.com/wc-duck/memcpy_util) will ship whit the version outlined in here.
 
 
 ## We have only tested on 4MB, how do we fare on smaller and bigger buffers?
@@ -543,16 +571,9 @@ Up until now we have only checked performance on 4MB buffers but what happen in 
 
 Lets add benchmarks on swapping buffers from 16 bytes up to 2GB in "resonable" intervals and plot them against each other as a time-per-byte vs buffer-size
 
-// diagram goes here, both debug and release
+> TODO: diagram goes here!
 
-// see that perf plan out at memory-speed after x mb.
-
-
-## Why is the unrolled sse2 and avx versions faster than memcpy()
-
-// adding a simple memcpy() for comparison
-
-// why, I guess I have missed something, others that know more than me!
+As we can see the graph flattens out at around size X, that just so happens to correlate quite well with getting close to the max perf of the memory in my machine. I would say that we have a few quite well performing swap-functions here :)
 
 
 ## How about std::swap_ranges() and std::swap()?
@@ -564,7 +585,7 @@ So lets, add the benchmark, run and... OH MY GOD!
 
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_all_time.png "memswap_all, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_all_time.png)
 
-On my machine, with -O0, it runs in about 3.3x the time on clang and 4.7x slower on gcc than the generic version we started of with! And compared to the fastest ones that we have implemented ourself its almost 112x slower in debug! Even if we don't "cheat" and call into an optimized memcpy we can quite easily device a version that run around 32x faster!
+On my machine, with -O0, it runs in about 3.3x the time on clang and 4.7x slower on gcc than the generic version we started of with! And compared to the fastest ones that we have implemented ourself its almost 112x slower in debug! Even if we don't "cheat" and call into an optimized `memcpy()` we can quite easily device a version that run around 32x faster!
 
 Even the optimized builds only reach the same perf as we do with the standard 'generic' implementation we had to begin with, not to weird as if you look at its implementation it is basically a really complex way of writing what we had in the generic case!
 
@@ -681,19 +702,13 @@ FYI the same code is generated for `std::swap`, `std::array` and similar constru
 
 Why did the code end up like this? I can't really answer that as I have neither written or, with an emphasis on, maintained a standard library implementation. I see that the generic code that we have there today lead to less code to maintain and maybe the concept of swapping buffers of memcpy:able data is not something that `std::swap_ranges` isn't often used for but there is absolutely room for improvement here.
 
-Just having a top-level check for "can be moved via memcpy()" and have a plain for-loop in that case would generate faster code in debug-builds for all of us.
+Just having a top-level check for "can be moved via `memcpy()`" and have a plain for-loop in that case would generate faster code in debug-builds for all of us.
 But as stated, I have not worked on a standard library implementation nor have I maintained one (a "standard library" for a commercial, AAA game-engine however!) so I'm sure that I have missed lots of details here *¯\\_(ツ)_/¯*
 
 What rubs me the wrong way with this is that there is nothing in the spec of `std::swap_ranges` that say that it has to be implemented(!) generically for all underlying types. If the type can be moved with a `memcpy` it could be implemented by a simple loop (or even better something optimized!).
 
 This is code and APIs used by millions of developers around the world, all of them having less of a chance to use a debug-build to track down their hairy bugs and issues.
 I can see the logic behind "just have one implementation for all cases" and how that might make sense if you look at code from a "purity" standpoint but in this case there are such a huge amount of developers that are affected that imho that "purity" is not important at all in my mind. Your assignment as standard library developers should not be to write readable and "nice" code (or maybe it is and in that case that is not the right focus!) it is to write something that work well for all the developers using your code! And that goes for non-optizied builds as well!
-
-
-## Why the slow memcpy()
-
-// noticed that my memswaps was running faster than 2*memcpy. Can we write a faster memcpy as well?
-// Why can I do it faster with SSE/AVX... what did I miss? There must be a reason!
 
 
 ## A short note on codesize
@@ -727,433 +742,28 @@ It would be interresting to hear if there is someone with more knowleage about t
 
 ## Summary
 
-So what have we learned? Honestly I'm not really sure :) Writing compilers that generate good code is hard? Honestly I feel that both clang and gcc do a decent job at what is presented to them, of course there is things you can do if you know your problem up front compared to producing an optimized result from ????.
+So what have we learned? Honestly I'm not really sure :) Writing compilers that generate good code is hard? Honestly I feel that both clang and gcc do a decent job at what is presented to them, of course there are more things you can do if you know your problem up front compared to producing an optimized result from "whatever the user throws your way".
 
 This might seem like ordinary bashing of c++ standard libraries and I really didn't want it to be... but debug perf is important! Compile time is important! and it seems like it isn't really taken into account when it should be.
-I'm not alone in seeing this. In the last year we have seen other more "c++-leaning" developers also raising this issue. For example [Vittorio Romeo](https://twitter.com/supahvee1234) has been raising that `std::move`, `std::forward` generate expensive calls in debug that really isn't needed and has been pushing for changes to both clang and gcc.
+I'm not alone in seeing this. In the last year we have seen other more "c++-leaning" developers also raising this issue. For example [Vittorio Romeo](https://twitter.com/supahvee1234) has been raising that `std::move`, `std::forward` and other "small" function generate expensive calls in debug that really isn't needed and has been pushing for changes to both clang and gcc.
 
 See:
 {{< youtube ffFT-gIPCRE >}}
 
+and:
+
+* [the sad state of debug performance in c++](https://vittorioromeo.info/index/blog/debug_performance_cpp.html)
+
 Personally I would just like to see less `std::` and less metaprogramming in the code I work in, but since I work in reallity it is kind of hard to avoid so I think work being done on making these kind of things cheaper is very welcome!
 
-> TODO: is it worth writing your own memcpy!?! and what do you call that? that might be scary! But might be worth it in specific cases! And how come it isn't faster? If I, as a clutz could do it? What am I missing, and I guess it is something!
+It might also be worth noting that I quickly tested out some "auto-vectorization" pragmas and that kind of stuff as well and at a first glance it didn't change the generated code one bit. I might have done something wrong or just missed something, I don't think so but I have been proven wrong before :D
 
-> TODO: quick notes on vectorization pragmas... did not work at all!
+> Also, during me writing this post gcc was updated in my ubuntu dist and I saw that some of the perf-issues noticed in here had been fixed. We'll see if it is noticeable enought to warent me writing more on the topic!
 
-> TODO: write about comparison with memcpy, same speed, bound by RAM-speed in all tests, how do I write a test that is in cache only?!
-
-> TODO:in the end, on bigger buffers, blocked by memory-speed
-
-What optimizations?
-
-optimize great on clang, but no other platform... copy by uint64_t? I guess it is some detected heuristic in clang?
-
-I guess it is hard to write compilers!!! different optimizations == different tradeoff:s
-
-clang in REALLY aggressive with its loop-unrolling + vectorization
-
-gcc and noinline gain a lot of perf!?!
-
-> TODO: something about clearing the cache!
-
-> TODO: note about unrolled avx clang vs gcc!
-
-// * limited by memory-speed
-// * clang, in these cases never seems to make any different choices between -O2 and -O3
-// * TODO: CONCLUSIONS gcc seems better at generating small code, more used on embedded?
-
-// I must have missed a bunch of parameters and how these would skew the results in different directions.
-
-> TODO: add note about upgraded gcc and putting that in a separate article!
+Last words. Was this interresting? Where did I mess up? Want to see more like this? Hit me up on twitter and tell me! (As long as you are fairly nice!)
+If something interresting pops out I might do a followup :)
 
 
 ## Apendix
 
-### time (us), 4MB swap
-
-|                         |   -O0 |   -Os |   -O2 |   -O3 |
-|-------------------------|-------|-------|-------|-------|
-| clang generic           |  9600 |  2900 |   310 |   307 |
-| gcc   generic           |  9600 |  2900 |  2450 |   325 |
-| clang memcpy            |   370 |   270 |   318 |   318 |
-| gcc   memcpy            |   525 |   570 |   355 |   355 |
-| clang memcpy ptr        |   285 |   285 |   285 |   285 |
-| gcc   memcpy ptr        |   315 |   590 |   335 |   345 |
-| clang sse               |  1540 |   280 |   310 |   310 |
-| gcc   sse               |  1550 |   285 |   320 |   320 |
-| clang avx               |  2200 |   238 |   260 |   260 |
-| gcc   avx               |   900 |   232 |   310 |   305 |
-| clang sse2_unroll       |  1000 |   188 |   175 |   175 |
-| gcc   sse2_unroll       |  1000 |   190 |   195 |   195 |
-| clang avx_unroll        |  2100 |   127 |   115 |   115 |
-| gcc   avx_unroll        |   590 |   125 |   158 |   158 |
-| clang std::swap_ranges  | 32000 |  2800 |   282 |   282 |
-| gcc   std::swap_ranges  | 45000 |  2350 |  2300 |   282 |
-| clang memcpy_only       |       |       |       |       |
-| gcc   memcpy_only       |       |       |       |       |
-
-
-### code size (bytes)
-
-|                         |   -O0 |   -Os |   -O2 |   -O3 |
-|-------------------------|-------|-------|-------|-------|
-| clang generic           |   125 |    30 |   322 |   322 |
-| gcc   generic           |   125 |    31 |    42 |   618 |
-| clang memcpy            |   420 |   212 |   215 |   215 |
-| gcc   memcpy            |  1176 |    77 |   942 |   942 |
-| clang memcpy ptr        |   453 |    77 |   215 |   215 |
-| gcc   memcpy ptr        |   513 |    77 |   942 |   942 |
-| clang sse               |   306 |    78 |   312 |   312 |
-| gcc   sse               |   304 |    61 |    90 |   557 |
-| clang avx               |   580 |    85 |   331 |   331 |
-| gcc avx                 |   379 |    65 |   130 |   721 |
-| clang sse2_unroll       |   990 |   146 |   376 |   376 |
-| gcc   sse2_unroll       |   975 |   119 |   146 |   611 |
-| clang avx_unroll        |  1817 |   165 |   411 |   411 |
-| gcc   avx_unroll        |  1125 |   135 |   282 |   881 |
-| clang std::swap_ranges  |  189* |    30 |   284 |   284 |
-| gcc   std::swap_ranges  |  308* |    31 |    42 |   512 |
-
-* std::swap_ranges in -O0 is an estimate and sum of all non-inlined std functions, functions used are 
-
-
-### `memswap_generic()`, `-O0`, `clang` assembly
-
-```asm
-<memswap_memcpy(void*, void*, unsigned long)>:
-    push   %rbp
-    mov    %rsp,%rbp
-    sub    $0x160,%rsp
-    mov    %rdi,-0x8(%rbp)
-    mov    %rsi,-0x10(%rbp)
-    mov    %rdx,-0x18(%rbp)
-    mov    -0x8(%rbp),%rax
-    mov    %rax,-0x20(%rbp)
-    mov    -0x10(%rbp),%rax
-    mov    %rax,-0x28(%rbp)
-    mov    -0x18(%rbp),%rax
-    shr    $0x8,%rax
-    mov    %rax,-0x138(%rbp)
-    movq   $0x0,-0x140(%rbp)
-    mov    -0x140(%rbp),%rax
-    cmp    -0x138(%rbp),%rax
-    jae    40627c <memswap_memcpy(void*, void*, unsigned long)+0xfc>
-    lea    -0x130(%rbp),%rax
-    mov    -0x140(%rbp),%rcx
-    shl    $0x8,%rcx
-    mov    %rcx,-0x148(%rbp)
-    mov    -0x20(%rbp),%rcx
-    add    -0x148(%rbp),%rcx
-    mov    %rax,%rdi
-    mov    %rcx,%rsi
-    mov    $0x100,%ecx
-    mov    %rcx,%rdx
-    mov    %rax,-0x150(%rbp)
-    mov    %rcx,-0x158(%rbp)
-    callq  401080 <memcpy@plt>
-    mov    -0x20(%rbp),%rax
-    add    -0x148(%rbp),%rax
-    mov    -0x28(%rbp),%rcx
-    add    -0x148(%rbp),%rcx
-    mov    %rax,%rdi
-    mov    %rcx,%rsi
-    mov    -0x158(%rbp),%rdx
-    callq  401080 <memcpy@plt>
-    mov    -0x28(%rbp),%rax
-    add    -0x148(%rbp),%rax
-    mov    %rax,%rdi
-    mov    -0x150(%rbp),%rsi
-    mov    -0x158(%rbp),%rdx
-    callq  401080 <memcpy@plt>
-    mov    -0x140(%rbp),%rax
-    add    $0x1,%rax
-    mov    %rax,-0x140(%rbp)
-    jmpq   4061c1 <memswap_memcpy(void*, void*, unsigned long)+0x41>
-    lea    -0x130(%rbp),%rax
-    mov    -0x20(%rbp),%rcx
-    mov    -0x138(%rbp),%rdx
-    shl    $0x8,%rdx
-    add    %rdx,%rcx
-    mov    -0x18(%rbp),%rdx
-    and    $0xff,%rdx
-    mov    %rax,%rdi
-    mov    %rcx,%rsi
-    mov    %rax,-0x160(%rbp)
-    callq  401080 <memcpy@plt>
-    mov    -0x20(%rbp),%rax
-    mov    -0x138(%rbp),%rcx
-    shl    $0x8,%rcx
-    add    %rcx,%rax
-    mov    -0x28(%rbp),%rcx
-    mov    -0x138(%rbp),%rdx
-    shl    $0x8,%rdx
-    add    %rdx,%rcx
-    mov    -0x18(%rbp),%rdx
-    and    $0xff,%rdx
-    mov    %rax,%rdi
-    mov    %rcx,%rsi
-    callq  401080 <memcpy@plt>
-    mov    -0x28(%rbp),%rax
-    mov    -0x138(%rbp),%rcx
-    shl    $0x8,%rcx
-    add    %rcx,%rax
-    mov    -0x18(%rbp),%rcx
-    and    $0xff,%rcx
-    mov    %rax,%rdi
-    mov    -0x160(%rbp),%rsi
-    mov    %rcx,%rdx
-    callq  401080 <memcpy@plt>
-    add    $0x160,%rsp
-    pop    %rbp
-    retq   
-    nopw   %cs:0x0(%rax,%rax,1)
-
-    xchg   %ax,%ax
-
-```
-
-
-### `memswap_generic()`, `-O0`, `gcc` assembly
-
-```asm
-<memswap_memcpy(void*, void*, unsigned long)>:
-    endbr64 
-    push   %rbp
-    mov    %rsp,%rbp
-    push   %rbx
-    sub    $0x168,%rsp
-    mov    %rdi,-0x158(%rbp)
-    mov    %rsi,-0x160(%rbp)
-    mov    %rdx,-0x168(%rbp)
-    mov    %fs:0x28,%rax
-
-    mov    %rax,-0x18(%rbp)
-    xor    %eax,%eax
-    mov    -0x158(%rbp),%rax
-    mov    %rax,-0x140(%rbp)
-    mov    -0x160(%rbp),%rax
-    mov    %rax,-0x138(%rbp)
-    mov    -0x168(%rbp),%rax
-    shr    $0x8,%rax
-    mov    %rax,-0x130(%rbp)
-    movq   $0x0,-0x148(%rbp)
-
-    mov    -0x148(%rbp),%rax
-    cmp    -0x130(%rbp),%rax
-    jae    668b <memswap_memcpy(void*, void*, unsigned long)+0x3cb>
-    mov    -0x148(%rbp),%rax
-    shl    $0x8,%rax
-    mov    %rax,-0x128(%rbp)
-    mov    -0x140(%rbp),%rdx
-    mov    -0x128(%rbp),%rax
-    add    %rdx,%rax
-    mov    (%rax),%rcx
-    mov    0x8(%rax),%rbx
-    mov    %rcx,-0x120(%rbp)
-    mov    %rbx,-0x118(%rbp)
-    mov    0x10(%rax),%rcx
-    mov    0x18(%rax),%rbx
-    mov    %rcx,-0x110(%rbp)
-    mov    %rbx,-0x108(%rbp)
-    mov    0x20(%rax),%rcx
-    mov    0x28(%rax),%rbx
-    mov    %rcx,-0x100(%rbp)
-    mov    %rbx,-0xf8(%rbp)
-    mov    0x30(%rax),%rcx
-    mov    0x38(%rax),%rbx
-    mov    %rcx,-0xf0(%rbp)
-    mov    %rbx,-0xe8(%rbp)
-    mov    0x40(%rax),%rcx
-    mov    0x48(%rax),%rbx
-    mov    %rcx,-0xe0(%rbp)
-    mov    %rbx,-0xd8(%rbp)
-    mov    0x50(%rax),%rcx
-    mov    0x58(%rax),%rbx
-    mov    %rcx,-0xd0(%rbp)
-    mov    %rbx,-0xc8(%rbp)
-    mov    0x60(%rax),%rcx
-    mov    0x68(%rax),%rbx
-    mov    %rcx,-0xc0(%rbp)
-    mov    %rbx,-0xb8(%rbp)
-    mov    0x70(%rax),%rcx
-    mov    0x78(%rax),%rbx
-    mov    %rcx,-0xb0(%rbp)
-    mov    %rbx,-0xa8(%rbp)
-    mov    0x80(%rax),%rcx
-    mov    0x88(%rax),%rbx
-    mov    %rcx,-0xa0(%rbp)
-    mov    %rbx,-0x98(%rbp)
-    mov    0x90(%rax),%rcx
-    mov    0x98(%rax),%rbx
-    mov    %rcx,-0x90(%rbp)
-    mov    %rbx,-0x88(%rbp)
-    mov    0xa0(%rax),%rcx
-    mov    0xa8(%rax),%rbx
-    mov    %rcx,-0x80(%rbp)
-    mov    %rbx,-0x78(%rbp)
-    mov    0xb0(%rax),%rcx
-    mov    0xb8(%rax),%rbx
-    mov    %rcx,-0x70(%rbp)
-    mov    %rbx,-0x68(%rbp)
-    mov    0xc0(%rax),%rcx
-    mov    0xc8(%rax),%rbx
-    mov    %rcx,-0x60(%rbp)
-    mov    %rbx,-0x58(%rbp)
-    mov    0xd0(%rax),%rcx
-    mov    0xd8(%rax),%rbx
-    mov    %rcx,-0x50(%rbp)
-    mov    %rbx,-0x48(%rbp)
-    mov    0xe0(%rax),%rcx
-    mov    0xe8(%rax),%rbx
-    mov    %rcx,-0x40(%rbp)
-    mov    %rbx,-0x38(%rbp)
-    mov    0xf8(%rax),%rdx
-    mov    0xf0(%rax),%rax
-    mov    %rax,-0x30(%rbp)
-    mov    %rdx,-0x28(%rbp)
-    mov    -0x138(%rbp),%rdx
-    mov    -0x128(%rbp),%rax
-    lea    (%rdx,%rax,1),%rcx
-    mov    -0x140(%rbp),%rdx
-    mov    -0x128(%rbp),%rax
-    add    %rdx,%rax
-    mov    $0x100,%edx
-    mov    %rcx,%rsi
-    mov    %rax,%rdi
-    callq  1150 <memcpy@plt>
-    mov    -0x138(%rbp),%rdx
-    mov    -0x128(%rbp),%rax
-    add    %rdx,%rax
-    mov    -0x120(%rbp),%rcx
-    mov    -0x118(%rbp),%rbx
-    mov    %rcx,(%rax)
-    mov    %rbx,0x8(%rax)
-    mov    -0x110(%rbp),%rcx
-    mov    -0x108(%rbp),%rbx
-    mov    %rcx,0x10(%rax)
-    mov    %rbx,0x18(%rax)
-    mov    -0x100(%rbp),%rcx
-    mov    -0xf8(%rbp),%rbx
-    mov    %rcx,0x20(%rax)
-    mov    %rbx,0x28(%rax)
-    mov    -0xf0(%rbp),%rcx
-    mov    -0xe8(%rbp),%rbx
-    mov    %rcx,0x30(%rax)
-    mov    %rbx,0x38(%rax)
-    mov    -0xe0(%rbp),%rcx
-    mov    -0xd8(%rbp),%rbx
-    mov    %rcx,0x40(%rax)
-    mov    %rbx,0x48(%rax)
-    mov    -0xd0(%rbp),%rcx
-    mov    -0xc8(%rbp),%rbx
-    mov    %rcx,0x50(%rax)
-    mov    %rbx,0x58(%rax)
-    mov    -0xc0(%rbp),%rcx
-    mov    -0xb8(%rbp),%rbx
-    mov    %rcx,0x60(%rax)
-    mov    %rbx,0x68(%rax)
-    mov    -0xb0(%rbp),%rcx
-    mov    -0xa8(%rbp),%rbx
-    mov    %rcx,0x70(%rax)
-    mov    %rbx,0x78(%rax)
-    mov    -0xa0(%rbp),%rcx
-    mov    -0x98(%rbp),%rbx
-    mov    %rcx,0x80(%rax)
-    mov    %rbx,0x88(%rax)
-    mov    -0x90(%rbp),%rcx
-    mov    -0x88(%rbp),%rbx
-    mov    %rcx,0x90(%rax)
-    mov    %rbx,0x98(%rax)
-    mov    -0x80(%rbp),%rcx
-    mov    -0x78(%rbp),%rbx
-    mov    %rcx,0xa0(%rax)
-    mov    %rbx,0xa8(%rax)
-    mov    -0x70(%rbp),%rcx
-    mov    -0x68(%rbp),%rbx
-    mov    %rcx,0xb0(%rax)
-    mov    %rbx,0xb8(%rax)
-    mov    -0x60(%rbp),%rcx
-    mov    -0x58(%rbp),%rbx
-    mov    %rcx,0xc0(%rax)
-    mov    %rbx,0xc8(%rax)
-    mov    -0x50(%rbp),%rcx
-    mov    -0x48(%rbp),%rbx
-    mov    %rcx,0xd0(%rax)
-    mov    %rbx,0xd8(%rax)
-    mov    -0x40(%rbp),%rcx
-    mov    -0x38(%rbp),%rbx
-    mov    %rcx,0xe0(%rax)
-    mov    %rbx,0xe8(%rax)
-    mov    -0x30(%rbp),%rcx
-    mov    -0x28(%rbp),%rbx
-    mov    %rcx,0xf0(%rax)
-    mov    %rbx,0xf8(%rax)
-    addq   $0x1,-0x148(%rbp)
-
-    jmpq   632d <memswap_memcpy(void*, void*, unsigned long)+0x6d>
-    mov    -0x168(%rbp),%rax
-    movzbl %al,%edx
-    mov    -0x130(%rbp),%rax
-    shl    $0x8,%rax
-    mov    %rax,%rcx
-    mov    -0x140(%rbp),%rax
-    add    %rax,%rcx
-    lea    -0x120(%rbp),%rax
-    mov    %rcx,%rsi
-    mov    %rax,%rdi
-    callq  1150 <memcpy@plt>
-    mov    -0x168(%rbp),%rax
-    movzbl %al,%eax
-    mov    -0x130(%rbp),%rdx
-    shl    $0x8,%rdx
-    mov    %rdx,%rcx
-    mov    -0x138(%rbp),%rdx
-    lea    (%rcx,%rdx,1),%rsi
-    mov    -0x130(%rbp),%rdx
-    shl    $0x8,%rdx
-    mov    %rdx,%rcx
-    mov    -0x140(%rbp),%rdx
-    add    %rdx,%rcx
-    mov    %rax,%rdx
-    mov    %rcx,%rdi
-    callq  1150 <memcpy@plt>
-    mov    -0x168(%rbp),%rax
-    movzbl %al,%edx
-    mov    -0x130(%rbp),%rax
-    shl    $0x8,%rax
-    mov    %rax,%rcx
-    mov    -0x138(%rbp),%rax
-    add    %rax,%rcx
-    lea    -0x120(%rbp),%rax
-    mov    %rax,%rsi
-    mov    %rcx,%rdi
-    callq  1150 <memcpy@plt>
-    nop
-    mov    -0x18(%rbp),%rax
-    xor    %fs:0x28,%rax
-
-    je     674e <memswap_memcpy(void*, void*, unsigned long)+0x48e>
-    callq  11e0 <__stack_chk_fail@plt>
-    add    $0x168,%rsp
-    pop    %rbx
-    pop    %rbp
-    retq
-```
-
-
-
-
-## TOREMOVE
-
-// NOTE: added a test on 4MB std::array as well and it is just implemented with swap_ranges, thus the same result! (with the added niceness of extra call-instructions to begin() and end()!)
-
-// for the swedish readers "me: so have you tried to run this code in Debug? c++-developers: 
-
-
-// TODO: overlap of the buffers to swap... would fail in some cases! For next time?
-
-// TODO: add measurements of std::swap_ranges and pure memcpy!
-
-// TODO: graphs!
-P
+[Appendix](appendix) with asm-listings and tables!
