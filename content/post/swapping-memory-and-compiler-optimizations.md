@@ -6,9 +6,7 @@ draft: true
 toc: true
 ---
 
-> TODO: go over the numbers one more time!
-
-During my vacation for the holidays I thought that maybe I wanted some smaller project that you could fit in together with "family life" (not the easiest of endevours!) and I got to think about some old code that I had laying about in my own little game-engine that I have thought about making public for a while.
+During my vacation for the holidays I thought that maybe I wanted some smaller project that you could fit in together with "family life" (not the easiest of endeavour!) and I got to think about some old code that I had laying about in my own little game-engine that I have thought about making public for a while.
 I thought it might be useful for someone else and maybe just doing some optimization work on it might be a fun little distraction!
 
 ## memcpy_util.h
@@ -17,9 +15,9 @@ That code was a small header called [memcpy_util.h](https://github.com/wc-duck/m
 
 Said and done, I did set out to work on breaking it out of my own codebase, updating docs, fixing some API:s, adding a few more unittests and putting some benchmarks around the code as prep for having a go at optimizing the functions at hand.
 
-Kudos to [Scott Vokes](https://twitter.com/silentbicycle) for [greatest.h](https://github.com/silentbicycle/greatest) and [Neil Henning](https://www.duskborn.com/) for the exelent little [ubench.h](https://github.com/sheredom/ubench.h)!.
+Kudos to [Scott Vokes](https://twitter.com/silentbicycle) for [greatest.h](https://github.com/silentbicycle/greatest) and [Neil Henning](https://www.duskborn.com/) for the excellent little [ubench.h](https://github.com/sheredom/ubench.h)!.
 
-The code is published on github at the same time as this post goes live. However some quite interesting things popped out while benchmarking the code. I would say that most of this is not rocket-surgery and many of you migth not find something new in here. But what the heck, the worst thing that can happen is that someone comes around and tell me that I have done some obvious errors and I'll learn something, otherwise maybe someone else might learn a thing or two?
+The code is published on github at the same time as this post goes live. However some quite interesting things popped out while benchmarking the code. I would say that most of this is not rocket-surgery and many of you might not find something new in here. But what the heck, the worst thing that can happen is that someone comes around and tell me that I have done some obvious errors and I'll learn something, otherwise maybe someone else might learn a thing or two?
 
 It should also be noted that what started as a single article might actually turn out to be a series, we'll see what happens :)
 
@@ -32,7 +30,7 @@ All this work has been done on my laptop with the following specs:
 
 > **CPU** Intel i7-10710U
 >
-> **RAM** 16GB LPDDR3 at 2133 MT/s (around 17GB/sec peak bandwitdth)
+> **RAM** 16GB LPDDR3 at 2133 MT/s (around 17GB/sec peak bandwidth)
 
 And I'll use the compilers that I have installed, that being
 
@@ -129,7 +127,7 @@ Lets start with `-O0` and just conclude that both clang and gcc generates basica
 >
 > `objdump -C -d local/linux_x86_64/gcc/O2/memcpy_util_bench | less`
 >
-> or using the excelent little tool [bat](https://github.com/sharkdp/bat) to get some nice syntax-highlighting
+> or using the excellent little tool [bat](https://github.com/sharkdp/bat) to get some nice syntax-highlighting
 >
 > `objdump -C -d local/linux_x86_64/gcc/O2/memcpy_util_bench | bat -l asm`
 
@@ -218,7 +216,7 @@ Lets start with `-O0` and just conclude that both clang and gcc generates basica
 
 ### Optimized - `-O2`/`-O3`
 
-At -O2 we will see that clang finds that it can use the SSE-registers to copy the data and gives us a huge speadup at the cost of roughly 2.5x the codesize. Huge in this case is 9600 us vs 310 us, i.e. near 31 times faster!
+At -O2 we will see that clang finds that it can use the SSE-registers to copy the data and gives us a huge speedup at the cost of roughly 2.5x the code size. Huge in this case is 9600 us vs 310 us, i.e. near 31 times faster!
 
 If we look at the generated assembly we can see that the meat-and-potatoes of this function just falls down to copying the data with SSE vector-registers + a preamble that handles all bytes that are not an even multiple of 16, i.e. can't be handled by the vector registers.
 
@@ -250,11 +248,11 @@ Listing the assembly generated here would be quite verbose, but the main loop do
     # ...
 ```
 
-This code is fast! And if I were to guess there is some heuristic in clang that detects the pattern of swapping memory buffers and have a fastpath for it and that we are not seeing any "clever" auto-vectorization (said by "not an expert (tm)"). If I'm wrong I would love to hear about it so that I can make a clarification here!
+This code is fast! And if I were to guess there is some heuristic in clang that detects the pattern of swapping memory buffers and have a fast-path for it and that we are not seeing any "clever" auto-vectorization (said by "not an expert (tm)"). If I'm wrong I would love to hear about it so that I can make a clarification here!
 
-We can also observe that clang generates identical code with -O3, this is something that will show up consistently throught out this article.
+We can also observe that clang generates identical code with -O3, this is something that will show up consistently through out this article.
 
-Now lets look at gcc as that is way more interresting. 
+Now lets look at gcc as that is way more interesting. 
 
 *gcc -O2*
 ```asm
@@ -277,7 +275,7 @@ Now lets look at gcc as that is way more interresting.
 
 First of we see that gcc generates really small code with -02, just 42 bytes. Code that is way slower than clang but still a great improvement over the non optimized code, 9600 us vs 2450 us, nearly 4 times faster. It has just generated a really simple loop and removed some general debug-overhead (such as keeping `bytes` in its own register and loading/storing it).
 
-In -O3 however... now we reach the same perf as clang in -02, but with double the codesize, what is going on here?
+In -O3 however... now we reach the same perf as clang in -02, but with double the code size, what is going on here?
 Well, loop-unrolling :)
 
 > using [compiler explorer](https://godbolt.org/) we can see that msvc is generating similar code as `gcc` for `/O2` and also quite similar code for `/O3`, i.e. loop-unrolling!
@@ -344,7 +342,7 @@ The actual assembly can be found in the appendix ([clang](appendix/#memswap_gene
 
  Looking at the disassembly we can see that gcc has decided to replace many of the calls to `memcpy()` (however not all of them?) with a whole bunch of unrolled 'mov' instructions while clang has decided to still generate calls to `memcpy()`.
 
-Unfortunatly for gcc this inlined code is a lot slower than the standard library `memcpy()` implementation. That kind of makes sense that calling into an optimized `memcpy()` from debug code would yield faster execution when copying larger chunks of memory. I would guess that gcc has tried to optimized for the case where the `memcpy()` would be small and the jump to memcpy would eat all perf-gain? I don't know what heuristics went into this but I'll ascribe it to "it is hard to write a compiler and what is best for x is not necessarily best for y".
+Unfortunately for gcc this inlined code is a lot slower than the standard library `memcpy()` implementation. That kind of makes sense that calling into an optimized `memcpy()` from debug code would yield faster execution when copying larger chunks of memory. I would guess that gcc has tried to optimized for the case where the `memcpy()` would be small and the jump to memcpy would eat all perf-gain? I don't know what heuristics went into this but I'll ascribe it to "it is hard to write a compiler and what is best for x is not necessarily best for y".
 
 One thing we can try is to get gcc to call `memcpy()` by calling it via a pointer and by that not inline it. Something like this?
 
@@ -379,14 +377,14 @@ First observation, clang generate the same code for all configs except `-O0`.
 Secondly, in `-O0`, we see WAY better perf on gcc and slightly better on clang. Calling into an optimized `memcpy()`, albeit via a pointer, instead of a bunch of unrolled `mov` instructions seem like a smart thing to do :)
 
 Next up, lets have a look at `-O2/-O3`, here we see that clang still decide to just call `memcpy()` and be done with it while gcc tries to be smart and add an inlined vectorized implementation using the SSE-registers (this is the same vectorization that it uses when just use pure `memcpy()`).
-Unfortunatly for GCC it's generated memcpy-replacement is both slower and bulkier than just calling `memcpy()` directly resulting in both slower and bigger code :(
+Unfortunately for GCC it's generated memcpy-replacement is both slower and bulkier than just calling `memcpy()` directly resulting in both slower and bigger code :(
 
-An interresting observation here is that in the measurements here we see that clang is faster when going through a function pointer than directly calling `memcpy()`. I found this quite odd and checked the generated assembly... and that is identical! As I wrote earlier, all the usual caveats on micro benchmarking apply :D !
+An interesting observation here is that in the measurements here we see that clang is faster when going through a function pointer than directly calling `memcpy()`. I found this quite odd and checked the generated assembly... and that is identical! As I wrote earlier, all the usual caveats on micro benchmarking apply :D !
 
 
 ### Why is clang faster in `-Os` than any of the other configs?
 
-One really interresting observation here is that clangs implementation in `-Os` is the fastest one, faster than `-O2`/`-O3`. Lets dig into why that is!
+One really interesting observation here is that clangs implementation in `-Os` is the fastest one, faster than `-O2`/`-O3`. Lets dig into why that is!
 
 > TODO: do it :)
 
@@ -395,7 +393,7 @@ One really interresting observation here is that clangs implementation in `-Os` 
 
 Calling memcpy or inlining? seems to depend on if the compiler can assume alignment of type that is copied, clang will fall back to calling memcpy() and gcc to a really inefficient loop where the call to memcpy is faster.
 
-> TODO: what would it generate if it wasn't in a noinline function and give the compiler the oportunity to see the buffer-size?
+> TODO: what would it generate if it wasn't in a noinline function and give the compiler the opportunity to see the buffer-size?
 
 
 ## Manual vectorization with SSE
@@ -433,12 +431,12 @@ Again lets compare with the generic implementation.
 
 > TODO: table of times listing generic, memcpy and sse2
 
-Now we'r talking. By sacrificing support on all platforms and only focusing on x86 we can get both compilers to generate code that can compete with the calls to `memcpy()` in all but the `-O0` builds. IHMO that is not surprising as we are comparing an optimized `memcpy()` against unoptimized code, however 1.5ms compared to the generic implementations 9.6ms is nothing to scoff at!
+Now we'r talking. By sacrificing support on all platforms and only focusing on x86 we can get both compilers to generate code that can compete with the calls to `memcpy()` in all but the `-O0` builds. IMHO that is not surprising as we are comparing an optimized `memcpy()` against unoptimized code, however 1.5ms compared to the generic implementations 9.6ms is nothing to scoff at!
 
-> For better perf it seems it might be worth calling the memcpy-version in debug, but should one select different codepaths depending on optimization level... not really sure? Maybe hide it behind a define and let the user decide?
+> For better perf it seems it might be worth calling the memcpy-version in debug, but should one select different code-paths depending on optimization level... not really sure? Maybe hide it behind a define and let the user decide?
 
 
-### `-Os` is the fastes config, why?
+### `-Os` is the fastest config, why?
 
 Another observation is that the `-Os` build beats both `-O2` and `-O3` on both compilers. But how is that? Lets dig in!
 
@@ -475,7 +473,7 @@ Avx vs SSE2
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_time.png "memswap_avx, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_time.png)
 
 They seem fairly similar in perf even as the AVX implementation is consistently slightly faster in optimized builds. Clang being generally performing a bit better than gcc perf-wise.
-However the most interresting thing is seeing that clang in `-O0` makes such a poor job of AVX compared to SSE while gcc seems to handle it just fine, actually generating faster `-O0`-code than the SSE-versions.
+However the most interesting thing is seeing that clang in `-O0` makes such a poor job of AVX compared to SSE while gcc seems to handle it just fine, actually generating faster `-O0`-code than the SSE-versions.
 
 So what is it that clang miss and what is it that gcc do better? Again, lets dig in to the generated assembly.
 
@@ -483,7 +481,7 @@ So what is it that clang miss and what is it that gcc do better? Again, lets dig
 
 ## Unrolling!
 
-Another thing we found when looking at clangs generated SSE-code was that it was unrolled to do 4 swaps each iteraton of the loop. Will that bring us better perf in our sse and avx implementations? lets try!
+Another thing we found when looking at clangs generated SSE-code was that it was unrolled to do 4 swaps each iteration of the loop. Will that bring us better perf in our sse and avx implementations? lets try!
 
 ```c++
 	size_t chunks = bytes / sizeof(__m128);
@@ -519,7 +517,7 @@ Another thing we found when looking at clangs generated SSE-code was that it was
 
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_time.png "memswap_unroll, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_time.png)
 
-Frist of, it seems that we gain a bit of per yes, nothing major but still nothing to scoff at! However what I find mostly interresting is how, in `-O0`, clang generate similar code as gcc for SSE, but way worse for AVX? What's going on here?
+First of, it seems that we gain a bit of per yes, nothing major but still nothing to scoff at! However what I find mostly interesting is how, in `-O0`, clang generate similar code as gcc for SSE, but way worse for AVX? What's going on here?
 
 If we inspec the generated assembly for the sse-version, both clang and gcc has generated almost the same code. There is an instruction here and there that are a bit different, but generally the same.
 
@@ -530,20 +528,20 @@ However for AVX the story is different...
 first of, if we look at code size, we see that clang has generate a function clocking in at 1817 byte while gcc is clocking in at 1125 bytes.
 All of this diff in size is taken up by the fact tha gcc has decided to use `vinsertf128` and `vextractf128` while clang decide to do the same move to and from registers with your plain old `mov` and quite a few of them.
 
-I guess gcc has just been comming further in their AVX support than clang. This is not my field of expertise, so I might have missed something crucial here. If I have, please point it out!
+I guess gcc has just been coming further in their AVX support than clang. This is not my field of expertise, so I might have missed something crucial here. If I have, please point it out!
 
 
 ## Compare against plain memcpy()
 
 To get some kind of benchmark of the memswap that we have it might also be worth comparing or swap against just doing a `memcpy()`.
 
-So lets add a benchmark just doing a `memcpy()` on the data instead of `memswap()` and see if there is some interresting things that show up.
+So lets add a benchmark just doing a `memcpy()` on the data instead of `memswap()` and see if there is some interesting things that show up.
 
 > TODO: graph!
 
 As we can see perf is mostly identical ... but that is to be expected as all implementations is just a call into stdlib and its `memcpy()`, give or take a few operations :)
 
-One thing that I however find more interresting is the fact that we in some configs see faster code from some of our own-implementations `memswap()` than `memcpy()`. I find this fascinating as the memswap will have to do more operations (swapping the memory) + write to 2 buffers instead of one?
+One thing that I however find more interesting is the fact that we in some configs see faster code from some of our own-implementations `memswap()` than `memcpy()`. I find this fascinating as the memswap will have to do more operations (swapping the memory) + write to 2 buffers instead of one?
 
 Could we write a faster `memcpy()` as well? Lets try and add a simple `memcpy()`-implementation taking our fastest memswaps, the unrolled sse and avx and see what numbers we can get.
 
@@ -560,7 +558,7 @@ Reasons for the slower system-`memcpy()` that I can think of is:
 * using sse or avx will 'consume' shared resources of the cpu better spent on other things?
     as the `memcpy()` on my linux-machine probably is optimized to run in a multi-process environment it might take that into consideration and using sse/avx like this might just consume resources better spent on other things?
 
-Could it be worth writing your own `memcpy()` like this... I would in most cases say "not really". But there might be cases where "you know what you are doing" and you have a copy-heavy workload, maybe? Especially if you are running exculsively on a machine such as developing games on a console like playstations or xboxes. Probably, however, you would be more likely to find more perf somewhere else :)
+Could it be worth writing your own `memcpy()` like this... I would in most cases say "not really". But there might be cases where "you know what you are doing" and you have a copy-heavy workload, maybe? Especially if you are running exclusively on a machine such as developing games on a console like PlayStations or XBoxes. Probably, however, you would be more likely to find more perf somewhere else :)
 
 But if you need it, [memcpy_util.h](https://github.com/wc-duck/memcpy_util) will ship whit the version outlined in here.
 
@@ -569,7 +567,7 @@ But if you need it, [memcpy_util.h](https://github.com/wc-duck/memcpy_util) will
 
 Up until now we have only checked performance on 4MB buffers but what happen in smaller and bigger buffers? Lets add some tests over a range of buffer sizes and see where we end up.
 
-Lets add benchmarks on swapping buffers from 16 bytes up to 2GB in "resonable" intervals and plot them against each other as a time-per-byte vs buffer-size
+Lets add benchmarks on swapping buffers from 16 bytes up to 2GB in "reasonable" intervals and plot them against each other as a time-per-byte vs buffer-size
 
 > TODO: diagram goes here!
 
@@ -578,7 +576,7 @@ As we can see the graph flattens out at around size X, that just so happens to c
 
 ## How about std::swap_ranges() and std::swap()?
 
-Now I guess some of you ask yourself, why doesn't he just use what is given to him by the c++ standrad library? It is after all "standard" and available to all by default, it should be at least decent right?
+Now I guess some of you ask yourself, why doesn't he just use what is given to him by the c++ standard library? It is after all "standard" and available to all by default, it should be at least decent right?
 So let's add some benchmarks and just test it out! According to all info I can find [`std::swap_ranges()`](https://en.cppreference.com/w/cpp/algorithm/swap_ranges) is the way to go.
 
 So lets, add the benchmark, run and... OH MY GOD!
@@ -589,7 +587,7 @@ On my machine, with -O0, it runs in about 3.3x the time on clang and 4.7x slower
 
 Even the optimized builds only reach the same perf as we do with the standard 'generic' implementation we had to begin with, not to weird as if you look at its implementation it is basically a really complex way of writing what we had in the generic case!
 
-> I'm leaving comparing compile-time of "generic loop" vs "memcpy_util" vs "std::swap_ranges()" as an excersize for the reader!
+> I'm leaving comparing compile-time of "generic loop" vs "memcpy_util" vs "std::swap_ranges()" as an exercise for the reader!
 
 So lets dig into why the performance is so terrible in debug for `std::swap_ranges`... should we maybe blame the "lazy compiler devs"? Nah, not really, the compiler is really just doing what it was told to do, and it was told to generate a lot of function-calls!
 
@@ -610,7 +608,7 @@ Lets take a trip to [compiler explorer](https://godbolt.org/z/Mf7rPrjc1) and hav
         ret
 ```
 
-Only 15 lines of assembly... nothing really interresting here, we'll have to dig deaper. Time to tell [compiler explorer](https://godbolt.org/z/Gxj3Gr5za) to show "library functions"
+Only 15 lines of assembly... nothing really interesting here, we'll have to dig deeper. Time to tell [compiler explorer](https://godbolt.org/z/Gxj3Gr5za) to show "library functions"
 
 *std::swap_ranges() - expanded*
 ```asm
@@ -708,13 +706,13 @@ But as stated, I have not worked on a standard library implementation nor have I
 What rubs me the wrong way with this is that there is nothing in the spec of `std::swap_ranges` that say that it has to be implemented(!) generically for all underlying types. If the type can be moved with a `memcpy` it could be implemented by a simple loop (or even better something optimized!).
 
 This is code and APIs used by millions of developers around the world, all of them having less of a chance to use a debug-build to track down their hairy bugs and issues.
-I can see the logic behind "just have one implementation for all cases" and how that might make sense if you look at code from a "purity" standpoint but in this case there are such a huge amount of developers that are affected that imho that "purity" is not important at all in my mind. Your assignment as standard library developers should not be to write readable and "nice" code (or maybe it is and in that case that is not the right focus!) it is to write something that work well for all the developers using your code! And that goes for non-optizied builds as well!
+I can see the logic behind "just have one implementation for all cases" and how that might make sense if you look at code from a "purity" standpoint but in this case there are such a huge amount of developers that are affected that imho that "purity" is not important at all in my mind. Your assignment as standard library developers should not be to write readable and "nice" code (or maybe it is and in that case that is not the right focus!) it is to write something that work well for all the developers using your code! And that goes for non-optimized builds as well!
 
 
-## A short note on codesize
+## A short note on code size
 
-A short note on codesize as we havn't really dug into it yet. From my point of view code-size of this code is not really interresting. Back in the old days of the PS3 and SPU:s it definitively was, but today I think there is bigger fish to fry. At least for code like this that tend to only be called in a few spots.
-However if it would be a problem as simple fix would be to just not inline the code as is done now. I doubdt that on the kind of buffersizes where this would be used that extra call overhead would make any differance what so ever.
+A short note on code size as we haven't really dug into it yet. From my point of view code-size of this code is not really interesting. Back in the old days of the PS3 and SPU:s it definitively was, but today I think there is bigger fish to fry. At least for code like this that tend to only be called in a few spots.
+However if it would be a problem as simple fix would be to just not inline the code as is done now. I doubt that on the kind of buffer-sizes where this would be used that extra call overhead would make any difference what so ever.
 
 However for other sectors of this business I guess it could be of a lot of importance.
 
@@ -735,9 +733,9 @@ So just for completeness, lets have a quick look at code size of the different i
 [![](/images/swapping-memory-and-compiler-optimizations/code_size_O2.png "code size -O2")](/images/swapping-memory-and-compiler-optimizations/code_size_O2.png)
 [![](/images/swapping-memory-and-compiler-optimizations/code_size_O3.png "code size -O3")](/images/swapping-memory-and-compiler-optimizations/code_size_O3.png)
 
-What is most interresting to note is that GCC is, in most cases, generating much smaller code and seem to optimize for that a lot harder. Could that be due to gcc being used more in software where that is more desireable? I can only guess and it surely seems like it.
+What is most interesting to note is that GCC is, in most cases, generating much smaller code and seem to optimize for that a lot harder. Could that be due to gcc being used more in software where that is more desireable? I can only guess and it surely seems like it.
 
-It would be interresting to hear if there is someone with more knowleage about this than me :)
+It would be interesting to hear if there is someone with more knowledge about this than me :)
 
 
 ## Summary
@@ -754,14 +752,14 @@ and:
 
 * [the sad state of debug performance in c++](https://vittorioromeo.info/index/blog/debug_performance_cpp.html)
 
-Personally I would just like to see less `std::` and less metaprogramming in the code I work in, but since I work in reallity it is kind of hard to avoid so I think work being done on making these kind of things cheaper is very welcome!
+Personally I would just like to see less `std::` and less meta-programming in the code I work in, but since I work in reality it is kind of hard to avoid so I think work being done on making these kind of things cheaper is very welcome!
 
 It might also be worth noting that I quickly tested out some "auto-vectorization" pragmas and that kind of stuff as well and at a first glance it didn't change the generated code one bit. I might have done something wrong or just missed something, I don't think so but I have been proven wrong before :D
 
-> Also, during me writing this post gcc was updated in my ubuntu dist and I saw that some of the perf-issues noticed in here had been fixed. We'll see if it is noticeable enought to warent me writing more on the topic!
+> Also, during me writing this post gcc was updated in my ubuntu dist and I saw that some of the perf-issues noticed in here had been fixed. We'll see if it is noticeable enough to warrant me writing more on the topic!
 
-Last words. Was this interresting? Where did I mess up? Want to see more like this? Hit me up on twitter and tell me! (As long as you are fairly nice!)
-If something interresting pops out I might do a followup :)
+Last words. Was this interesting? Where did I mess up? Want to see more like this? Hit me up on twitter and tell me! (As long as you are fairly nice!)
+If something interesting pops out I might do a followup :)
 
 
 ## Apendix
