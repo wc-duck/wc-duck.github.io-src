@@ -393,7 +393,7 @@ One really interesting observation here is that clangs implementation in `-Os` i
 
 Calling memcpy or inlining? seems to depend on if the compiler can assume alignment of type that is copied, clang will fall back to calling memcpy() and gcc to a really inefficient loop where the call to memcpy is faster.
 
-> TODO: what would it generate if it wasn't in a noinline function and give the compiler the opportunity to see the buffer-size?
+> TODO: what would it generate if it wasn't in a noinline function and give the compiler the opportunity to see the buffer-size? Push forward to another post?
 
 
 ## Manual vectorization with SSE
@@ -472,12 +472,11 @@ inline void memswap_avx( void* ptr1, void* ptr2, size_t bytes )
 Avx vs SSE2
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_time.png "memswap_avx, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_avx_time.png)
 
-They seem fairly similar in perf even as the AVX implementation is consistently slightly faster in optimized builds. Clang being generally performing a bit better than gcc perf-wise.
+They seem fairly similar in perf even as the AVX implementation is consistently slightly faster in optimized builds. Clang generally performing a bit better than gcc perf-wise.
 However the most interesting thing is seeing that clang in `-O0` makes such a poor job of AVX compared to SSE while gcc seems to handle it just fine, actually generating faster `-O0`-code than the SSE-versions.
 
-So what is it that clang miss and what is it that gcc do better? Again, lets dig in to the generated assembly.
+We'll get to that later, but first ...
 
-> TODO: weird "segway" here... :( DO IT!
 
 ## Unrolling!
 
@@ -517,7 +516,7 @@ Another thing we found when looking at clangs generated SSE-code was that it was
 
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_time.png "memswap_unroll, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_unroll_time.png)
 
-First of, it seems that we gain a bit of per yes, nothing major but still nothing to scoff at! However what I find mostly interesting is how, in `-O0`, clang generate similar code as gcc for SSE, but way worse for AVX? What's going on here?
+First of, it seems that we gain a bit of perf yes, nothing major but still nothing to scoff at! However what I find mostly interesting is how, in `-O0`, clang generate similar code as gcc for SSE, but way worse for AVX, same as for the non-unrolled case? What's going on here?
 
 If we inspec the generated assembly for the sse-version, both clang and gcc has generated almost the same code. There is an instruction here and there that are a bit different, but generally the same.
 
@@ -560,7 +559,7 @@ Reasons for the slower system-`memcpy()` that I can think of is:
 
 Could it be worth writing your own `memcpy()` like this... I would in most cases say "not really". But there might be cases where "you know what you are doing" and you have a copy-heavy workload, maybe? Especially if you are running exclusively on a machine such as developing games on a console like PlayStations or XBoxes. Probably, however, you would be more likely to find more perf somewhere else :)
 
-But if you need it, [memcpy_util.h](https://github.com/wc-duck/memcpy_util) will ship whit the version outlined in here.
+But if you need it, [memcpy_util.h](https://github.com/wc-duck/memcpy_util) will ship with the version outlined in here.
 
 
 ## We have only tested on 4MB, how do we fare on smaller and bigger buffers?
