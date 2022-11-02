@@ -1,7 +1,7 @@
 ---
 title: "When memcpy() change!"
 date: 2022-10-23T09:38:33+02:00
-draft: true
+tags: ['code', 'c++', 'optimization']
 ---
 
 > To start of, yes, I know that this article touch undefined behavior and that all bets are off!
