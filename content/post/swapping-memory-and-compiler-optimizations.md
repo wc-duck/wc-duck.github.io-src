@@ -391,9 +391,7 @@ One really interesting observation here is that clangs implementation in `-Os` i
 
 ### memcpy(), to inline or not to inline, thats the question?
 
-Calling memcpy or inlining? seems to depend on if the compiler can assume alignment of type that is copied, clang will fall back to calling memcpy() and gcc to a really inefficient loop where the call to memcpy is faster.
-
-> TODO: what would it generate if it wasn't in a noinline function and give the compiler the opportunity to see the buffer-size? Push forward to another post?
+Calling memcpy or inlining, how do the compiler decide if it should call the system `memcpy()` or generate its own? It is not really clear to me and it would be interesting to dig into but I feel that it is out of the scope of this already big post. Maybe there will be a follow up some day :)
 
 
 ## Manual vectorization with SSE
@@ -429,7 +427,17 @@ Again lets compare with the generic implementation.
 ... and the sse2-versions among them selfs.
 [![memswap_sse2,time](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_time.png "memswap_sse2, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_sse2_time.png)
 
-> TODO: table of times listing generic, memcpy and sse2
+**Data in table form**
+|           | generic | GB/sec | memcpy  | GB/sec | sse2    | GB/sec |
+|-----------|---------|--------|---------|--------|---------|--------|
+| clang -O0 | 9600 us |    0.4 |  370 us |  10.56 | 1540 us |   2.54 |
+| clang -Os | 2900 us |   1.35 |  270 us |  14.47 |  280 us |  13.95 |
+| clang -O2 |  310 us |   12.6 |  318 us |  12.28 |  310 us |  12.60 |
+| clang -O3 |  307 us |   12.6 |  318 us |  12.28 |  310 us |  12.60 |
+| gcc   -O0 | 9600 us |    0.4 |  525 us |   7.44 | 1550 us |   2.54 |
+| gcc   -Os | 2900 us |   1.35 |  570 us |   6.85 |  285 us |  13.71 |
+| gcc   -O2 | 2450 us |   1.59 |  355 us |   11.0 |  320 us |  12.21 |
+| gcc   -O3 |  325 us |   12.0 |  355 us |   11.0 |  320 us |  12.21 |
 
 Now we'r talking. By sacrificing support on all platforms and only focusing on x86 we can get both compilers to generate code that can compete with the calls to `memcpy()` in all but the `-O0` builds. IMHO that is not surprising as we are comparing an optimized `memcpy()` against unoptimized code, however 1.5ms compared to the generic implementations 9.6ms is nothing to scoff at!
 
@@ -540,7 +548,7 @@ So lets add a benchmark just doing a `memcpy()` on the data instead of `memswap(
 
 As we can see perf is mostly identical ... but that is to be expected as all implementations is just a call into stdlib and its `memcpy()`, give or take a few operations :)
 
-One thing that I however find more interesting is the fact that we in some configs see faster code from some of our own-implementations `memswap()` than `memcpy()`. I find this fascinating as the memswap will have to do more operations (swapping the memory) + write to 2 buffers instead of one?
+One thing that I however find more interesting is the fact that we in some configs see faster code from some of our own implementations of `memswap()` than `memcpy()`. I find this fascinating as the memswap will have to do more operations (swapping the memory) + write to 2 buffers instead of one?
 
 Could we write a faster `memcpy()` as well? Lets try and add a simple `memcpy()`-implementation taking our fastest memswaps, the unrolled sse and avx and see what numbers we can get.
 
@@ -559,7 +567,7 @@ Reasons for the slower system-`memcpy()` that I can think of is:
 
 Could it be worth writing your own `memcpy()` like this... I would in most cases say "not really". But there might be cases where "you know what you are doing" and you have a copy-heavy workload, maybe? Especially if you are running exclusively on a machine such as developing games on a console like PlayStations or XBoxes. Probably, however, you would be more likely to find more perf somewhere else :)
 
-But if you need it, [memcpy_util.h](https://github.com/wc-duck/memcpy_util) will ship with the version outlined in here.
+But if you need it, and your profiler tell you that it is a win, [memcpy_util.h](https://github.com/wc-duck/memcpy_util) will ship with the version outlined in here.
 
 
 ## We have only tested on 4MB, how do we fare on smaller and bigger buffers?
@@ -573,7 +581,7 @@ Lets add benchmarks on swapping buffers from 16 bytes up to 2GB in "reasonable" 
 As we can see the graph flattens out at around size X, that just so happens to correlate quite well with getting close to the max perf of the memory in my machine. I would say that we have a few quite well performing swap-functions here :)
 
 
-## How about std::swap_ranges() and std::swap()?
+## How about `std::swap_ranges()` and `std::swap()`?
 
 Now I guess some of you ask yourself, why doesn't he just use what is given to him by the c++ standard library? It is after all "standard" and available to all by default, it should be at least decent right?
 So let's add some benchmarks and just test it out! According to all info I can find [`std::swap_ranges()`](https://en.cppreference.com/w/cpp/algorithm/swap_ranges) is the way to go.
@@ -592,7 +600,7 @@ So lets dig into why the performance is so terrible in debug for `std::swap_rang
 
 Lets take a trip to [compiler explorer](https://godbolt.org/z/Mf7rPrjc1) and have a look at what assembly is actually generated for this.
 
-*std::swap_ranges()*
+*`std::swap_ranges()`*
 ```asm
     swap_it():
         push    rbp
@@ -609,7 +617,7 @@ Lets take a trip to [compiler explorer](https://godbolt.org/z/Mf7rPrjc1) and hav
 
 Only 15 lines of assembly... nothing really interesting here, we'll have to dig deeper. Time to tell [compiler explorer](https://godbolt.org/z/Gxj3Gr5za) to show "library functions"
 
-*std::swap_ranges() - expanded*
+*`std::swap_ranges()` - expanded*
 ```asm
 unsigned char* std::swap_ranges<unsigned char*, unsigned char*>(unsigned char*, unsigned char*, unsigned char*):
         push    rbp
