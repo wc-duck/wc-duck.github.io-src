@@ -108,7 +108,7 @@ UBENCH_EX(swap, big)
 }
 ```
 
-Notice how `memswap()` was wrapped in a function marked as noinline, this as clang would just optimize the function away.
+Notice how `memswap()` was wrapped in a function marked as noinline, this as clang would just optimize the function away otherwise.
 
 Time to take a look at the results, we'll look at perf at different optimization level (perf in debug/`-O0` is also important!) as well as generated code-size.
 
@@ -342,7 +342,7 @@ The actual assembly can be found in the appendix ([clang](appendix/#memswap_gene
 
  Looking at the disassembly we can see that gcc has decided to replace many of the calls to `memcpy()` (however not all of them?) with a whole bunch of unrolled 'mov' instructions while clang has decided to still generate calls to `memcpy()`.
 
-Unfortunately for gcc this inlined code is a lot slower than the standard library `memcpy()` implementation. That kind of makes sense that calling into an optimized `memcpy()` from debug code would yield faster execution when copying larger chunks of memory. I would guess that gcc has tried to optimized for the case where the `memcpy()` would be small and the jump to memcpy would eat all perf-gain? I don't know what heuristics went into this but I'll ascribe it to "it is hard to write a compiler and what is best for x is not necessarily best for y".
+Unfortunately for gcc this inlined code is a lot slower than the system `memcpy()` implementation. That kind of makes sense that calling into an optimized `memcpy()` from debug code would yield faster execution when copying larger chunks of memory. I would guess that gcc has tried to optimized for the case where the `memcpy()` would be small and the jump to memcpy would eat all perf-gain? I don't know what heuristics went into this but I'll ascribe it to "it is hard to write a compiler and what is best for x is not necessarily best for y".
 
 One thing we can try is to get gcc to call `memcpy()` by calling it via a pointer and by that not inline it. Something like this?
 
@@ -379,20 +379,13 @@ Secondly, in `-O0`, we see WAY better perf on gcc and slightly better on clang. 
 Next up, lets have a look at `-O2/-O3`, here we see that clang still decide to just call `memcpy()` and be done with it while gcc tries to be smart and add an inlined vectorized implementation using the SSE-registers (this is the same vectorization that it uses when just use pure `memcpy()`).
 Unfortunately for GCC it's generated memcpy-replacement is both slower and bulkier than just calling `memcpy()` directly resulting in both slower and bigger code :(
 
-An interesting observation here is that in the measurements here we see that clang is faster when going through a function pointer than directly calling `memcpy()`. I found this quite odd and checked the generated assembly... and that is identical! As I wrote earlier, all the usual caveats on micro benchmarking apply :D !
-
-
-### Why is clang faster in `-Os` than any of the other configs?
-
-One really interesting observation here is that clangs implementation in `-Os` is the fastest one, faster than `-O2`/`-O3`. Lets dig into why that is!
-
-> TODO: do it :)
+An interesting observation here is that in the measurements we see that clang is faster when going through a function pointer than directly calling `memcpy()`. I found this quite odd and checked the generated assembly... and that is identical! As I wrote earlier, all the usual caveats on micro benchmarking apply :D !
 
 
 ### memcpy(), to inline or not to inline, thats the question?
 
 Calling memcpy or inlining, how do the compiler decide if it should call the system `memcpy()` or generate its own? It is not really clear to me and it would be interesting to dig into but I feel that it is out of the scope of this already big post. Maybe there will be a follow up some day :)
-
+ 
 
 ## Manual vectorization with SSE
 
@@ -444,16 +437,9 @@ Now we'r talking. By sacrificing support on all platforms and only focusing on x
 > For better perf it seems it might be worth calling the memcpy-version in debug, but should one select different code-paths depending on optimization level... not really sure? Maybe hide it behind a define and let the user decide?
 
 
-### `-Os` is the fastest config, why?
-
-Another observation is that the `-Os` build beats both `-O2` and `-O3` on both compilers. But how is that? Lets dig in!
-
-> TODO: yes, do it!
-
-
 ## Manual vectorization with AVX
 
-So if going wide with SSE registers was this kind of improvement, will it perform better if we go wider with AVX? Lets try it out!
+So if going wide with SSE registers was this kind of improvement, will it perform even better if we go wider with AVX? Lets try it out!
 
 ```c++
 inline void memswap_avx( void* ptr1, void* ptr2, size_t bytes )
@@ -538,38 +524,6 @@ All of this diff in size is taken up by the fact tha gcc has decided to use `vin
 I guess gcc has just been coming further in their AVX support than clang. This is not my field of expertise, so I might have missed something crucial here. If I have, please point it out!
 
 
-## Compare against plain memcpy()
-
-To get some kind of benchmark of the memswap that we have it might also be worth comparing or swap against just doing a `memcpy()`.
-
-So lets add a benchmark just doing a `memcpy()` on the data instead of `memswap()` and see if there is some interesting things that show up.
-
-> TODO: graph!
-
-As we can see perf is mostly identical ... but that is to be expected as all implementations is just a call into stdlib and its `memcpy()`, give or take a few operations :)
-
-One thing that I however find more interesting is the fact that we in some configs see faster code from some of our own implementations of `memswap()` than `memcpy()`. I find this fascinating as the memswap will have to do more operations (swapping the memory) + write to 2 buffers instead of one?
-
-Could we write a faster `memcpy()` as well? Lets try and add a simple `memcpy()`-implementation taking our fastest memswaps, the unrolled sse and avx and see what numbers we can get.
-
-> TODO: code!
-
-It turns out that we can actually get faster by writing it ourself, at least in these synthetic micro-benchmarks. This surprised me as I would expect the systems `memcpy()` to be as fast as possible on the hardware that I got?
-In this case however there must be something I have missed and I would REALLY like to know what that is! If I could write a `memcpy()` with sse or avx so would the, I assume, smart people writing the stdlib code as well. And a function such as `memcpy()` that is called a lot, there should be perf across the board to save!
-
-Reasons for the slower system-`memcpy()` that I can think of is:
-
-* `memcpy()` is actually implemented as `memmove()`
-    this would add a clear perf implication as buffers might overlap. However couldn't this be checked as a pre-condition? Would that pre-condition just make really small memcpy:s slower?
-
-* using sse or avx will 'consume' shared resources of the cpu better spent on other things?
-    as the `memcpy()` on my linux-machine probably is optimized to run in a multi-process environment it might take that into consideration and using sse/avx like this might just consume resources better spent on other things?
-
-Could it be worth writing your own `memcpy()` like this... I would in most cases say "not really". But there might be cases where "you know what you are doing" and you have a copy-heavy workload, maybe? Especially if you are running exclusively on a machine such as developing games on a console like PlayStations or XBoxes. Probably, however, you would be more likely to find more perf somewhere else :)
-
-But if you need it, and your profiler tell you that it is a win, [memcpy_util.h](https://github.com/wc-duck/memcpy_util) will ship with the version outlined in here.
-
-
 ## We have only tested on 4MB, how do we fare on smaller and bigger buffers?
 
 Up until now we have only checked performance on 4MB buffers but what happen in smaller and bigger buffers? Lets add some tests over a range of buffer sizes and see where we end up.
@@ -586,7 +540,7 @@ As we can see the graph flattens out at around size X, that just so happens to c
 Now I guess some of you ask yourself, why doesn't he just use what is given to him by the c++ standard library? It is after all "standard" and available to all by default, it should be at least decent right?
 So let's add some benchmarks and just test it out! According to all info I can find [`std::swap_ranges()`](https://en.cppreference.com/w/cpp/algorithm/swap_ranges) is the way to go.
 
-So lets, add the benchmark, run and... OH MY GOD!
+So lets add the benchmark, run and... OH NO!
 
 [![](/images/swapping-memory-and-compiler-optimizations/memswap_all_time.png "memswap_all, time for 4MB")](/images/swapping-memory-and-compiler-optimizations/memswap_all_time.png)
 
@@ -713,13 +667,13 @@ But as stated, I have not worked on a standard library implementation nor have I
 What rubs me the wrong way with this is that there is nothing in the spec of `std::swap_ranges` that say that it has to be implemented(!) generically for all underlying types. If the type can be moved with a `memcpy` it could be implemented by a simple loop (or even better something optimized!).
 
 This is code and APIs used by millions of developers around the world, all of them having less of a chance to use a debug-build to track down their hairy bugs and issues.
-I can see the logic behind "just have one implementation for all cases" and how that might make sense if you look at code from a "purity" standpoint but in this case there are such a huge amount of developers that are affected that imho that "purity" is not important at all in my mind. Your assignment as standard library developers should not be to write readable and "nice" code (or maybe it is and in that case that is not the right focus!) it is to write something that work well for all the developers using your code! And that goes for non-optimized builds as well!
+I can see the logic behind "just have one implementation for all cases" and how that might make sense if you look at code from a "purity" standpoint but in this case there are such a huge amount of developers that are affected that imho that "purity" is not important at all. Your assignment as standard library developers should not be to write readable and "nice" code (or maybe it is and in that case that is not the right focus!) it is to write something that work well for all the developers using your code! And that goes for non-optimized builds as well!
 
 
 ## A short note on code size
 
 A short note on code size as we haven't really dug into it yet. From my point of view code-size of this code is not really interesting. Back in the old days of the PS3 and SPU:s it definitively was, but today I think there is bigger fish to fry. At least for code like this that tend to only be called in a few spots.
-However if it would be a problem as simple fix would be to just not inline the code as is done now. I doubt that on the kind of buffer-sizes where this would be used that extra call overhead would make any difference what so ever.
+However if it would be a problem a simple fix would be to just not inline the code as is done now. I doubt that on the kind of buffer-sizes where this would be used that extra call overhead would make any difference what so ever.
 
 However for other sectors of this business I guess it could be of a lot of importance.
 
