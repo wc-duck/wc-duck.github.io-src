@@ -65,6 +65,11 @@ footnoteReturnLinkContents = "^"
   icon="fab fa-twitter"
 
 [[params.social]]
+  name="mastodon"
+  url="https://mastodon.gamedev.place/@wcduck"
+  icon="fab fa-mastodon"
+
+[[params.social]]
   name="github"
   url="https://github.com/wc-duck"
   icon="fab fa-github"
