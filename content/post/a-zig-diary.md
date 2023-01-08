@@ -1,8 +1,7 @@
 ---
 title: "A Zig Diary"
-date: 2022-11-18T18:59:19+01:00
+date: 2023-01-08T19:34:19+01:00
 tags: ['code', 'zig']
-draft: true
 ---
 
 As it turned out I happened to help out with fixing a space to host a [zig meetup](https://www.meetup.com/zig-stockholm/) here in Stockholm at the place where I work. However I haven't written a single line of zig in my life... I felt that it might be worth doing something about that :D
