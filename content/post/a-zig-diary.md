@@ -377,7 +377,7 @@ If nothing else and zig just disappears some day (not likely!) it will at least 
 
 I do think that I will keep fiddling with zig in the future. I have had some thought going like "everyone has to have written an NES-emulator in their life right?", and maybe it would be worth doing that in zig just for the fun of it?
 
-I'm also intrigued about trying out zig as a buildsystem for my data serialization library (we all got one right?) [https://github.com/wc-duck/datalibrary/]("datalibrary") and see how that turns out!
+I'm also intrigued about trying out zig as a buildsystem for my data serialization library (we all got one right?) ["datalibrary"](https://github.com/wc-duck/datalibrary/) and see how that turns out!
 
 In the end... this was kind of fun, would do again! And here, finally is a link to the crappy source for the img-to-ascii converter!
 
