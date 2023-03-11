@@ -1,8 +1,7 @@
 ---
 title: 'Swapping memory and compiler optimizations'
-date: 2022-02-13
+date: 2023-03-11
 tags: ['code', 'c++', 'optimization', 'memcpy_util']
-draft: true
 toc: true
 ---
 
