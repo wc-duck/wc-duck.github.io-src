@@ -79,6 +79,11 @@ footnoteReturnLinkContents = "^"
   url="mailto:fredrik.kihlander@gmail.com"
   icon="fa fa-envelope"
 
+[[params.social]]
+  name="rss"
+  url="index.xml"
+  icon="fas fa-rss"
+
 [params.logo]
   url = "logo.png"
   width = 50
