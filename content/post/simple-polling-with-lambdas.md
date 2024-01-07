@@ -5,12 +5,12 @@ tags: ['code', 'c++', 'api-design']
 draft: true
 ---
 
-In this post I'm going to touch on a c++-technique to handle callbacks that I have not seen written about before and that many of my collegues hadn't seen before either. Probably it's not something new and some of you will probably just say "yeah yeah, nothing new under the sun" but it's probably worth a few words!
+In this post I'm going to touch on a c++-technique to handle callbacks that I have not seen written about before and that many of my colleagues hadn't seen before either. Probably it's not something new and some of you will probably just say "yeah yeah, nothing new under the sun" but it's probably worth a few words!
 
-Most of us has been in situations where we need to pass a functor that use some local variables to a function. It might be that we have some kind of "for each" over some collection of things or polling events from a system.
+Most of us has been in situations where we need to pass a function + userdata to another function. It might be that we have some kind of "for each" over some collection of things or polling events from a system.
 
-I, for example, like to write systems that need polling that can also emit events/results that happened since the last poll for the user to react to. One conveniant way to do this is to just pass a callback to your poll-function that is called per item.
-This will not "force" any storage on the user such as returning an allocated array would do and leave the actual decission on what to do with the data to the user. 
+I, for example, like to write systems that need polling that can also emit events/results that happened since the last poll for the user to react to. One convenient way to do this is to just pass a callback to your poll-function that is called per item.
+This will not "force" any storage on the user such as returning an allocated array would do and leave the actual decision on what to do with the data to the user. 
 
 Something like this:
 
@@ -72,14 +72,16 @@ This works... but it is not without its drawbacks!
 
 ### Memory allocations
 
-First of, `std::function` can allocate memory on the heap, something that would be wasteful if we aren't storing our closure. It is as far as I can tell allowed to do that all the time but all modern `std::`-lib implementations seem to optimize that by putting smaller closures into the std::function object itself.
+First of, `std::function` can allocate memory on the heap, something that would be wasteful if we aren't saving our closure, i.e. the lifetime of the closure is the same as function-call. All modern `std::`-lib implementations seem to optimize that by putting smaller closures into the `std::function` object itself, but bigger ones is forced to end up on the heap.
 
-This behavior can lead to your application all of a sudden starting to allocate without you seeing it. For example you might need to "just capture one more int" or a struct "grows" witohut you seeing it. Boom, allocation creaping in!
+This behavior can lead to your application all of a sudden starting to allocate without you seeing it. For example you might need to "just capture one more int" or a struct "grows" without you seeing it. Boom, allocation creeping in!
+
+Is an allocation here and there a massive problem? Probably not for code like this BUT, at least in my line of work, trying to not do work that you don't have to is "in the job description" and one day that thing you were calling 3 times a frame is now being called all over the place.
 
 
 ### Compile times
 
-Including `<functional>` on my system adds a shitton (metric!) of lines to compile to you pre-processed c++-file! How ever you turn this, throwing more code on your compiler to work with will probably not make it complete faster! We will get to numbers and comparisons later on!
+Including `<functional>` on my system adds a shitton (metric!) of lines to compile to you pre-processed c++-file! However you turn this, throwing more code on your compiler to work with will probably not make it complete faster! We will get to numbers and comparisons later on!
 
 
 ### Debug performance
@@ -88,7 +90,7 @@ Thirdly, debug-performance! Yes, we should care about performance in debug-build
 
 > The fact that, at work, I can run a full debug-build of Apex (the Avalanche Engine) and still reach decent performance is worth a lot to your day to day productivity!
 
-As we can see in a previous post about [swapping memory](../swapping-memory-and-compiler-optimizations) we can see that the c++ standard library can be far from great in a non optimized build!
+As we can see in a previous post about [swapping memory](../swapping-memory-and-compiler-optimizations) we can see that the c++ standard library can be far from great in a non optimized build (and honestly in an optimized one as well)!
 
 
 ## Just pass the closure!
@@ -109,9 +111,14 @@ Yet again we will come to numbers later!
 
 So all numbers look great (trust me!), we are all happy right? RIGHT? Well not quite. What does the above code really mean? It means that all our code in `the_system_poll()` need to be inlined due to the template. For a smaller function this is just fine and maybe even desired! But in this case it might mean that we need to inline a big part of a bigger system! What if `the_system` need a lot of lines of code to implement or that the implementation of the storage for `the_system` requires a whole bunch of expensive includes to just be able to be declared. We would not want to expose that to your humble user just by including `the_system.h`!
 
+Header hygiene is a virtue!
+
+
 ## c-style
 
 So how do we handle this? As usual a good way to solve this is to look at a c-style interface. This is something I personally see as the solution to many problems and maybe a topic for its own post some day :)
+
+> When I say c-style here doesn't necessarily mean full c, just functions + handles + structs. A reference here and a constexpr there is just fine.
 
 But how would this look if you would do it in c? Probably something like this:
 
@@ -119,31 +126,35 @@ But how would this look if you would do it in c? Probably something like this:
 void the_system_poll(the_system sys, void(*cb)(the_system_msg& msg, void* userdata), void* userdata);
 ```
 
-> note: yes yes, I know `&` is not c!
-
-I.e. we would pass a function pointer and userdata as a `void*` and on the implementation side cast that `void*` back to what we originally passed in. By doing this we can put all our implementation of this function in a `.c`/'`.cpp`-file and hide all of our implementation for the user! This works but the ergonomics maybe leave a bit to be desired:
+I.e. we would pass a function pointer and userdata as a `void*` and on the implementation side cast that `void*` back to what we originally passed in. By doing this we can put the entire implementation of this function in a `.c`/`.cpp`-file and hide it for the user! This works but the ergonomics maybe leave a bit to be desired:
 
 ```c++
+// ... first we need to declare our payload sturct to pass to our callback ...
 struct my_user_data
 {
     int data1;
     int data2;
 };
 
+// ... and then declare the actuall callback function ...
 static void poll_function(const the_system_msg& msg, void* user_data)
 {
+    // ... cast our passed in userdata to our payload struct ...
     my_user_data* ud = (my_user_data*)user_data;
 
+    // ... run the actual code that we want to run ...
     use_me(ud->data1);
     use_me(ud->data2);
 }
 
 void poll_me(the_system sys)
 {
+    // ... declare our payload sturct and fill out the data we need to use ...
     my_user_data ud;
     ud.data1 = some_value1;
     ud.data1 = some_value2;
 
+    // ... and call it ...
     the_system_poll(sys, poll_function, &ud);
 }
 ```
@@ -151,7 +162,7 @@ That is quite a bit of code and honestly quite a few things to get wrong.
 
 ## Kihlanders reverse
 
-But what if we combine these 2 approches? I.e. use the classical c-style function + userdata to be able to hide away all implementation and use the templated closure for ergonomics! If we combine them it could look something like this:
+But what if we combine these 2 approaches? I.e. use the classical c-style function + userdata to be able to hide away all implementation and use the templated closure for ergonomics! If we combine them it could look something like this:
 
 ```c++
 void the_system_poll(the_system sys, void(*cb)(the_system_msg& msg, void* userdata), void* userdata);
@@ -159,22 +170,24 @@ void the_system_poll(the_system sys, void(*cb)(the_system_msg& msg, void* userda
 template<typename FUNC>
 void the_system_poll(the_system sys, FUNC&& cb)
 {
-    // ... lets add a second wrapper-functions to handle the casting for us ...
+    // ... add a second wrapper-function to handle the casting for us ...
     auto wrap = [](const the_system_msg& msg, void* userdata) {
-        // ... we passed a pointer to the generated closure through our userdata-pointer ...
+        // ... as we passed a pointer to the closure as userdata
+        //     we can just cast it back here and call it and we get
+        //     all the payload etc for free ...
         FUNC& f = *(FUNC*)userdata;
-        // ... and then call it ...
         f(msg);
     };
 
-    // ... pass the wrapper as the callback to the c-function and the generated closure as userdata ...
+    // ... pass the wrapper as the callback to the c-function and the 
+    //     generated closure as userdata ...
     the_system_poll(sys, wrap, &cb);
 }
 ```
 
 > If this hasn't been described before I would like to dub this `Kihlanders reverse`, it has a nice ring to it right?
 
-This would make it possible to write this:
+This will make it possible to write this:
 
 ```c++
 void poll_me(the_system sys)
@@ -186,20 +199,19 @@ void poll_me(the_system sys)
 }
 ```
 
-Just by introducing a 5 line wrapper we can give the user all the ergonomics of the original `std::function` without much of the cost! We also have an API that is compatible with `c` and all the languages that can call `c` by just adding an:
+Just by introducing a 5 line wrapper we can give the user all the ergonomics of the original `std::function` without much of the cost! We also have an API that is compatible with `c` and all the languages that can call `c` by just adding a pre-processor check for `__cplusplus`:
 
 ```c++
 #if defined(__cplusplus)
 // ....
 #endif
 ```
-around our generated wrapper-function!
 
 # Numbers!
 
 But enough talk about perf without numbers!
 
-> Before we start, this is the standard disclaimer about micro benchmarks. They are hard and might be inacurate compared to a real world scenario etc. You know the drill!
+> Before we start, this is the standard disclaimer about micro benchmarks. They are hard and might be inaccurate compared to a real world scenario etc. You know the drill!
 
 All this work has been done on my laptop with the following specs:
 
@@ -309,11 +321,15 @@ void func(int sys, FUNC&& cb)
 }
 ```
 
-I'm pretty sure that you don't want me to paste out the thousands of lines that you get with `std::function`, depending on what c++-version you target you get these numbers, these are lines with all empty lines stripped via:
+I'm pretty sure that you don't want me to paste out the thousands of lines that you get with `std::function`. Depending on what c++-version you target you get these numbers, these are lines with all empty lines stripped via:
 
-> `g++ -E functor_preproc.cpp -DUSE_STD_FUNC -std=c++98 | sed '/^\s*#/d;/^\s*$/d' | wc -l`
+```sh
+g++ -E functor_preproc.cpp -DUSE_STD_FUNC -std=c++98 | sed '/^\s*#/d;/^\s*$/d' | wc -l
+```
 
-> It is worth noting that I dediced to strip out empty lines as the preprocessors seem to produce a lot of it. My really uneducated guess is that it is just faster for the preprocessor to strip out "ifdef":ed code by switching the lines with new-lines instead of removing them from the data properly? But that is just a guess. However I think it is much fairer to count the lines without the empty lines as a compiler probably handle these lines quickly.
+It is worth noting that I decided to strip out empty lines as the preprocessor seem to produce a lot of it. My really uneducated guess is that it is just faster for the preprocessor to strip out "ifdef":ed code by switching the lines with new-lines instead of removing them from the data properly? But that is just a guess. However I think it is much fairer to count the lines without the empty lines as a compiler probably handle these lines quickly.
+
+However, here are the line counts for a few different c++ versions.
 
 |       | std=c++98 | std=c++11 | std=c++14 | std=c++17 | std=c++20 |
 |-------|-----------|-----------|-----------|-----------|-----------|
@@ -325,7 +341,8 @@ That is a lot of lines compared to 14 that was the non std-one! Regardless of ho
 
 ## Performance
 
-Next up is performance, how do the different solutions stand up against each other. To test this out we'll write a benchmark app using the excelent [ubench.h](https://github.com/sheredom/ubench.h).
+Next up is performance, how do the different solutions stand up against each other?
+To test this out we'll write a benchmark app using the excellent [ubench.h](https://github.com/sheredom/ubench.h).
 
 [functor_bench.cpp](functor_bench.cpp)
 
@@ -335,7 +352,7 @@ I have added a few different test-cases to benchmark, both tested with a 'small'
 * std::function passed to an inlined function
 * just pass a simple closure to an inlined function
 * a c-style function passing a void* userdata
-* and a kihlanders reverse one.
+* and a Kihlanders reverse one.
 
 Let's see how they perform, these are the times captured by the benchmark.
 
@@ -349,14 +366,14 @@ Let's see how they perform, these are the times captured by the benchmark.
 | inlined closure big         |   3.2us |  0.02us |     2.9us |    0.02us |
 | c-style small               |   5.9us |   1.3us |     4.6us |     1.4us |
 | c-style big                 |   5.9us |   1.3us |     4.4us |     1.4us |
-| kihlanders reverse small    |   8.3us |   1.3us |     5.3us |     1.4us |
-| kihlanders reverse big      |   8.3us |   1.3us |     5.4us |     1.4us |
+| Kihlanders reverse small    |   8.3us |   1.3us |     5.3us |     1.4us |
+| Kihlanders reverse big      |   8.3us |   1.3us |     5.4us |     1.4us |
 
 > these are mean values of the above tests. To note is also that the results are not super stable but 'within reason' determined by me.
 
 So what can we take away from these numbers.
 
-One takeaway is, just as in [swapping memory](../swapping-memory-and-compiler-optimizations)-article, debug-performance of `std::` is just horrible. You are paying a lot for that "conviniance" in your non-optimized build.
+One takeaway is, just as in [swapping memory](../swapping-memory-and-compiler-optimizations)-article, debug-performance of `std::` is just horrible. You are paying a lot for that "conviniance" in your non-optimized build. I find it really "amuzing" that the small-object version is actually significantly slower than the bigger closure in debug on gcc!
 
 Secondly an inline function is, obviously, faster in all builds and in `-O2` it is taken as far as both gcc and clang just calculating the answer to my benchmark right away and just store an int directly. Interrestingly they can't do the same thing with the `std::function` version even if you inline it. Throwing complexity at the compiler will force the compiler to spend time on the complexity instead of optimizing the actual code!
 
@@ -367,7 +384,7 @@ Finally we see that Kihlanders reverse seem to add no overhead to any of the non
 
 # Conclusion
 
-According to me this is a really nifty way to provide your users with a good API at low cost in both compile-time and performance. I, for example, use this in https://github.com/wc-duck/dirutil and it's `dir_walk()` function and also in quite a few API:s in the "Apex Engine".
-It is obviously not for all your usecases as you can't store the capture and using something like this for a `sort` or similar that you want inlined is probably not a good idea.
+According to me this is a really nifty way to provide your users with a good API at low cost in both compile-time and performance. I, for example, use this in https://github.com/wc-duck/dirutil and it's `dir_walk()` function and in quite a few API:s in the "Apex Engine".
+It is obviously not for all your usecases as you can't store the closure and using something like this for a `sort` or similar that you want inlined is probably not a good idea.
 
 So to close this article, was this usefull? Did I miss something? Feel free to reach out and tell me (if you are civil that is :) ).
