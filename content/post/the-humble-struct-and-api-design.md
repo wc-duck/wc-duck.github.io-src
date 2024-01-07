@@ -16,3 +16,5 @@ draft: true
 
 * as argument in callbacks
     - same as above, adding features
+
+https://quuxplusone.github.io/blog/2020/04/18/default-function-arguments-are-the-devil/ the parameter struct!

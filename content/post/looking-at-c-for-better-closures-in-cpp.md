@@ -1,9 +1,11 @@
 ---
-title: "Simple Polling With Lambdas"
+title: "Looking at c for better closures in c++"
 date: 2023-12-24
 tags: ['code', 'c++', 'api-design']
 draft: true
 ---
+
+> Note: before we begin, finding a name for this post was really hard!
 
 In this post I'm going to touch on a c++-technique to handle callbacks that I have not seen written about before and that many of my colleagues hadn't seen before either. Probably it's not something new and some of you will probably just say "yeah yeah, nothing new under the sun" but it's probably worth a few words!
 
@@ -373,11 +375,11 @@ Let's see how they perform, these are the times captured by the benchmark.
 
 So what can we take away from these numbers.
 
-One takeaway is, just as in [swapping memory](../swapping-memory-and-compiler-optimizations)-article, debug-performance of `std::` is just horrible. You are paying a lot for that "conviniance" in your non-optimized build. I find it really "amuzing" that the small-object version is actually significantly slower than the bigger closure in debug on gcc!
+One takeaway is, just as in [swapping memory](../swapping-memory-and-compiler-optimizations)-article, debug-performance of `std::` is just horrible. You are paying a lot for that "convenience" in your non-optimized build. I find it really "amusing" that the small-object version is actually significantly slower than the bigger closure in debug on gcc!
 
-Secondly an inline function is, obviously, faster in all builds and in `-O2` it is taken as far as both gcc and clang just calculating the answer to my benchmark right away and just store an int directly. Interrestingly they can't do the same thing with the `std::function` version even if you inline it. Throwing complexity at the compiler will force the compiler to spend time on the complexity instead of optimizing the actual code!
+Secondly an inline function is, obviously, faster in all builds and in `-O2` it is taken as far as both gcc and clang just calculating the answer to my benchmark right away and just store an int directly. Interestingly they can't do the same thing with the `std::function` version even if you inline it. Throwing complexity at the compiler will force the compiler to spend time on the complexity instead of optimizing the actual code!
 
-I also find it interresting that clang seems to do quite a bit better work with all of the code in `-O0` while gcc performs better in `-O2`.
+I also find it interesting that clang seems to do quite a bit better work with all of the code in `-O0` while gcc performs better in `-O2`.
 
 Finally we see that Kihlanders reverse seem to add no overhead to any of the non-inlined alternatives and generally better than `std::function` in all cases.
 
@@ -387,4 +389,4 @@ Finally we see that Kihlanders reverse seem to add no overhead to any of the non
 According to me this is a really nifty way to provide your users with a good API at low cost in both compile-time and performance. I, for example, use this in https://github.com/wc-duck/dirutil and it's `dir_walk()` function and in quite a few API:s in the "Apex Engine".
 It is obviously not for all your usecases as you can't store the closure and using something like this for a `sort` or similar that you want inlined is probably not a good idea.
 
-So to close this article, was this usefull? Did I miss something? Feel free to reach out and tell me (if you are civil that is :) ).
+So to close this article, was this useful? Did I miss something? Feel free to reach out and tell me (if you are civil that is :) ).
