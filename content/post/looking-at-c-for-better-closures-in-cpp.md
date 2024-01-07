@@ -1,8 +1,7 @@
 ---
 title: "Looking at c for better closures in c++"
-date: 2023-12-24
+date: 2024-01-07
 tags: ['code', 'c++', 'api-design']
-draft: true
 ---
 
 > Note: before we begin, finding a name for this post was really hard!
