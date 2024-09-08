@@ -167,3 +167,9 @@ Number one is probably just because you can its not sure that you should! But al
 It is also obvious that zig has a long way to go... documentation is "sparse" to say the least. The above code was all figured out with googling and reading the zig std-lib. On the other hand it is quite impressive that I could do this in a really short amount of time despite the lack of docs!
 
 In the end it was an experiment that turned out to be a dead end... but these are also worth writing about from time to time!
+
+
+> *Addendum - 08 Sept, 2024*
+> 
+> After writing this I watched this from 'zig showtime' where the same idea is shown of, but much better!
+> {{< youtube l_qY2p0OH9A >}}
