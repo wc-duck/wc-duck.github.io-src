@@ -1,8 +1,7 @@
 ---
 title: "It's Healthy to Look Outside Your Own Tribe!"
-date: 2024-12-16T19:08:57+01:00
+date: 2024-12-19T18:35:57+01:00
 tags: ['tech', 'ramblings']
-draft: true
 ---
 
 It's time for me to interrupt the ordinary programming on this little part of the interwebs that I call my blog and not do the usual schtick with numbers, code and c++-bashing and be a bit more philosophical instead.
